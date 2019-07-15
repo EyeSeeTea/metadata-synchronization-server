@@ -2,15 +2,11 @@
 
 module.exports = {
     env: {
-        "browser": true,
-        "es6": true
+        node: true,
+        commonjs: true,
+        es6: true,
     },
-    extends: [
-        "react-app",
-        "prettier",
-        "eslint:recommended",
-        "plugin:@typescript-eslint/recommended",
-    ],
+    extends: ["prettier", "eslint:recommended", "plugin:@typescript-eslint/recommended"],
     rules: {
         "no-console": "off",
         "@typescript-eslint/camelcase": "off",
@@ -22,8 +18,6 @@ module.exports = {
         "@typescript-eslint/type-annotation-spacing": "off",
         "no-extra-semi": "off",
         "no-mixed-spaces-and-tabs": "off",
-        "react-hooks/rules-of-hooks": "error",
-        "react-hooks/exhaustive-deps": "warn",
     },
     plugins: ["@typescript-eslint"],
     settings: {

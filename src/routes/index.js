@@ -2,8 +2,12 @@ import express from "express";
 
 const router = express.Router();
 
+router.get("/api", function(req, res) {
+    res.json({});
+});
+
 router.get("/", function(req, res) {
-    res.render("index", { title: "Metadata Synchronization" });
+    res.end("Metadata Synchronization");
 });
 
 export default router;
