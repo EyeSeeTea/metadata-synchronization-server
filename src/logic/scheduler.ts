@@ -1,26 +1,34 @@
 import _ from "lodash";
-import axios, { AxiosBasicCredentials } from "axios";
 import schedule from "node-schedule";
-import "dotenv/config";
+
+import { startSynchronization } from "./synchronization";
 import { SynchronizationRule } from "../types/synchronization";
+import { D2 } from "../types/d2";
+import SyncRule from "../models/syncRule";
 
 export default class Scheduler {
-    private static baseUrl: string;
-    private static auth: AxiosBasicCredentials;
+    private static d2: D2;
 
     private static synchronizationTask = async (syncRule: SynchronizationRule): Promise<void> => {
-        const { name, builder } = syncRule;
-        console.log(`Executing rule ${name}: ${builder.metadataIds.join(", ")}`);
+        const { id, name, builder } = syncRule;
+        try {
+            for await (const { message, syncReport, done } of startSynchronization(Scheduler.d2, {
+                ...builder,
+                syncRule: id,
+            })) {
+                if (message) console.log(`Rule ${name}`, message);
+                if (syncReport) await syncReport.save(Scheduler.d2);
+                if (done && syncReport) console.log(`Rule ${name}`, { status: "FINISHED" });
+            }
+        } catch (error) {
+            console.error(`Failed executing rule ${name}`, error);
+        }
     };
 
     private static fetchTask = async (): Promise<void> => {
-        // TODO: We should use dataStore (refactor to not rely on browser/d2 pending)
-        const rules = (await axios.get(
-            `${Scheduler.baseUrl}/api/dataStore/metadata-synchronization/rules`,
-            { auth: Scheduler.auth }
-        )).data;
+        const { objects: rules } = await SyncRule.list(Scheduler.d2, {}, { paging: false });
 
-        const jobs = _.filter(rules, rule => rule.enabled === "true");
+        const jobs = _.filter(rules, rule => rule.enabled);
         const idsToCancel = _.difference(
             _.keys(schedule.scheduledJobs),
             ["__default__"],
@@ -52,10 +60,8 @@ export default class Scheduler {
         });
     };
 
-    static initialize(baseUrl: string, auth: AxiosBasicCredentials): void {
-        Scheduler.baseUrl = baseUrl;
-        Scheduler.auth = auth;
-
+    static initialize(d2: D2): void {
+        Scheduler.d2 = d2;
         schedule.scheduleJob("__default__", "* * * * *", Scheduler.fetchTask);
     }
 }

@@ -27,3 +27,6 @@ src/locales/
 
 # IntelliJ
 /.idea/
+
+# Configuration
+app-config.json
