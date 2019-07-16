@@ -20,10 +20,4 @@ module.exports = {
         "no-mixed-spaces-and-tabs": "off",
     },
     plugins: ["@typescript-eslint"],
-    settings: {
-        react: {
-            pragma: "React",
-            version: "16.6.0",
-        },
-    },
 };
