@@ -1,4 +1,5 @@
 import _ from "lodash";
+import cronstrue from "cronstrue";
 import schedule from "node-schedule";
 
 import { startSynchronization } from "./synchronization";
@@ -10,8 +11,9 @@ export default class Scheduler {
     private static d2: D2;
 
     private static synchronizationTask = async (syncRule: SynchronizationRule): Promise<void> => {
-        const { id, name, builder } = syncRule;
+        const { id, name, builder, frequency } = syncRule;
         try {
+            console.log(`Rule ${name}`, { status: "STARTING", frequency: cronstrue.toString(frequency || "") });
             for await (const { message, syncReport, done } of startSynchronization(Scheduler.d2, {
                 ...builder,
                 syncRule: id,
@@ -46,10 +48,10 @@ export default class Scheduler {
             const { id, name, frequency } = syncRule;
             if (id && frequency) {
                 if (schedule.scheduledJobs[id]) {
-                    console.log(`Updating existing rule ${name} with frequency ${frequency}`);
+                    console.log(`Updating existing rule ${name} with frequency ${cronstrue.toString(frequency)} (${frequency})`);
                     schedule.rescheduleJob(id, frequency);
                 } else {
-                    console.log(`Scheduling rule ${name} with frequency ${frequency}`);
+                    console.log(`Scheduling rule ${name} with frequency ${cronstrue.toString(frequency)} (${frequency})`);
                     schedule.scheduleJob(
                         id,
                         frequency,
