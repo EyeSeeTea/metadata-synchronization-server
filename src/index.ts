@@ -15,11 +15,13 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Initialize router
+// Initialize express
 app.use("/", indexRouter);
-
 app.listen(PORT);
 console.log(`Server started on ${PORT}`);
+
+// Workaround: Hide DEBUG logs from appearing in console
+console.debug = (): void => {};
 
 const start = async (): Promise<void> => {
     const {
