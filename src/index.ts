@@ -2,12 +2,13 @@ import express from "express";
 import axios from "axios";
 import btoa from "btoa";
 import { init } from "d2";
+import {configure} from "log4js";
 import "dotenv/config";
-import appConfig from "../app-config.json";
 
 import indexRouter from "./routes";
 import Scheduler from "./logic/scheduler";
 import Instance from "./models/instance";
+import appConfig from "../app-config.json";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,6 +23,11 @@ console.log(`Server started on ${PORT}`);
 
 // Workaround: Hide DEBUG logs from appearing in console
 console.debug = (): void => {};
+
+configure({
+    appenders: { file: { type: 'file', filename: 'debug.log' } },
+    categories: { default: { appenders: ['file'], level: 'debug' } }
+});
 
 const start = async (): Promise<void> => {
     const {
