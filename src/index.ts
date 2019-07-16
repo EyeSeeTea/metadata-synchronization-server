@@ -2,7 +2,7 @@ import express from "express";
 import axios from "axios";
 import btoa from "btoa";
 import { init } from "d2";
-import {configure} from "log4js";
+import { configure } from "log4js";
 import "dotenv/config";
 
 import indexRouter from "./routes";
@@ -25,8 +25,8 @@ console.log(`Server started on ${PORT}`);
 console.debug = (): void => {};
 
 configure({
-    appenders: { file: { type: 'file', filename: 'debug.log' } },
-    categories: { default: { appenders: ['file'], level: 'debug' } }
+    appenders: { file: { type: "file", filename: "debug.log" } },
+    categories: { default: { appenders: ["file"], level: "debug" } },
 });
 
 const start = async (): Promise<void> => {

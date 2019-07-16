@@ -1,7 +1,7 @@
 import _ from "lodash";
 import cronstrue from "cronstrue";
 import schedule from "node-schedule";
-import { getLogger } from 'log4js';
+import { getLogger } from "log4js";
 
 import { startSynchronization } from "./synchronization";
 import { SynchronizationRule } from "../types/synchronization";
@@ -48,11 +48,12 @@ export default class Scheduler {
 
             if (id && frequency) {
                 if (schedule.scheduledJobs[id]) schedule.rescheduleJob(id, frequency);
-                else schedule.scheduleJob(
-                    id,
-                    frequency,
-                    (): Promise<void> => Scheduler.synchronizationTask(syncRule)
-                );
+                else
+                    schedule.scheduleJob(
+                        id,
+                        frequency,
+                        (): Promise<void> => Scheduler.synchronizationTask(syncRule)
+                    );
             }
         });
     };
