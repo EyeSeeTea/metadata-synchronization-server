@@ -14,4 +14,4 @@
 
 ### :bookmark_tabs: Others
 
--IS this change needed to be replicated over the [Web Application](https://github.com/EyeSeeTea/metadata-synchronization)?
+-Should this change be replicated over the [Web Application](https://github.com/EyeSeeTea/metadata-synchronization)?
