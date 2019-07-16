@@ -3,12 +3,14 @@ import axios from "axios";
 import btoa from "btoa";
 import { init } from "d2";
 import "dotenv/config";
+import appConfig from "../app-config.json";
 
-import indexRouter from "./routes/index";
+import indexRouter from "./routes";
 import Scheduler from "./logic/scheduler";
 import Instance from "./models/instance";
 
 const app = express();
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -16,16 +18,16 @@ app.use(express.urlencoded({ extended: false }));
 // Initialize router
 app.use("/", indexRouter);
 
-app.listen(process.env.PORT);
-console.log(`Server started on ${process.env.PORT}`);
+app.listen(PORT);
+console.log(`Server started on ${PORT}`);
 
-const start = async () => {
+const start = async (): Promise<void> => {
     const {
         encryptionKey = "",
-        baseUrl = "http://play.dhis2.org/demo",
+        baseUrl = "http://play.dhis2.org/demo/api",
         username = "admin",
         password = "district",
-    } = await axios.get("app-config.json");
+    } = appConfig;
 
     // Login to the attached instance with basic auth
     const Authorization = `Basic ${btoa(username + ":" + password)}`;
