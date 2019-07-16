@@ -18,7 +18,7 @@ export default class Scheduler {
                 ...builder,
                 syncRule: id,
             })) {
-                if (message) console.log(`Rule ${name}`, message);
+                if (message) console.log(`Rule ${name}`, { status: "RUNNING", message });
                 if (syncReport) await syncReport.save(Scheduler.d2);
                 if (done && syncReport) console.log(`Rule ${name}`, { status: "FINISHED" });
             }
@@ -64,6 +64,8 @@ export default class Scheduler {
 
     static initialize(d2: D2): void {
         Scheduler.d2 = d2;
+
+        Scheduler.fetchTask();
         schedule.scheduleJob("__default__", "* * * * *", Scheduler.fetchTask);
     }
 }
