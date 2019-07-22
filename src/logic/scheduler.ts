@@ -61,7 +61,10 @@ export default class Scheduler {
     static initialize(d2: D2): void {
         Scheduler.d2 = d2;
 
+        // Execute fetch task immediately
         Scheduler.fetchTask();
-        schedule.scheduleJob("__default__", "* * * * *", Scheduler.fetchTask);
+
+        // Schedule periodic fetch task every minute
+        schedule.scheduleJob("__default__", "0 * * * * *", Scheduler.fetchTask);
     }
 }
