@@ -9,19 +9,23 @@ import { D2 } from "../types/d2";
 import SyncRule from "../models/syncRule";
 
 export default class Scheduler {
-    private static d2: D2;
+    private d2: D2;
 
-    private static synchronizationTask = async (syncRule: SynchronizationRule): Promise<void> => {
+    constructor(d2: D2) {
+        this.d2 = d2;
+    }
+
+    private synchronizationTask = async (syncRule: SynchronizationRule): Promise<void> => {
         const { id, name, builder, frequency } = syncRule;
         const logger = getLogger(name);
         try {
             logger.debug(`Start with frequency: ${cronstrue.toString(frequency || "")}`);
-            for await (const { message, syncReport, done } of startSynchronization(Scheduler.d2, {
+            for await (const { message, syncReport, done } of startSynchronization(this.d2, {
                 ...builder,
                 syncRule: id,
             })) {
                 if (message) logger.debug(message);
-                if (syncReport) await syncReport.save(Scheduler.d2);
+                if (syncReport) await syncReport.save(this.d2);
                 if (done && syncReport) logger.debug("Finished");
             }
         } catch (error) {
@@ -29,8 +33,8 @@ export default class Scheduler {
         }
     };
 
-    private static fetchTask = async (): Promise<void> => {
-        const { objects: rules } = await SyncRule.list(Scheduler.d2, {}, { paging: false });
+    private fetchTask = async (): Promise<void> => {
+        const { objects: rules } = await SyncRule.list(this.d2, {}, { paging: false });
 
         const jobs = _.filter(rules, rule => rule.enabled);
         const idsToCancel = _.difference(
@@ -52,19 +56,17 @@ export default class Scheduler {
                     schedule.scheduleJob(
                         id,
                         frequency,
-                        (): Promise<void> => Scheduler.synchronizationTask(syncRule)
+                        (): Promise<void> => this.synchronizationTask(syncRule)
                     );
             }
         });
     };
 
-    static initialize(d2: D2): void {
-        Scheduler.d2 = d2;
-
+    public initialize(): void {
         // Execute fetch task immediately
-        Scheduler.fetchTask();
+        this.fetchTask();
 
         // Schedule periodic fetch task every minute
-        schedule.scheduleJob("__default__", "0 * * * * *", Scheduler.fetchTask);
+        schedule.scheduleJob("__default__", "0 * * * * *", this.fetchTask);
     }
 }

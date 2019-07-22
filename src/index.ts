@@ -43,7 +43,7 @@ const start = async (): Promise<void> => {
     axios.defaults.headers.common["Authorization"] = Authorization;
 
     Instance.setEncryptionKey(encryptionKey);
-    Scheduler.initialize(d2);
+    new Scheduler(d2).initialize();
 };
 
 start();
