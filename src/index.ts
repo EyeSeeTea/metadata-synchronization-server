@@ -38,9 +38,9 @@ const start = async (): Promise<void> => {
     } = appConfig;
 
     // Login to the attached instance with basic auth
-    const Authorization = `Basic ${btoa(username + ":" + password)}`;
-    const d2 = await init({ baseUrl, headers: { Authorization } });
-    axios.defaults.headers.common["Authorization"] = Authorization;
+    const authorization = `Basic ${btoa(username + ":" + password)}`;
+    const d2 = await init({ baseUrl, headers: { authorization } });
+    axios.defaults.headers.common["Authorization"] = authorization;
 
     Instance.setEncryptionKey(encryptionKey);
     new Scheduler(d2).initialize();
