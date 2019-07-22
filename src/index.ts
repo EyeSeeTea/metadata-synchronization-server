@@ -31,8 +31,8 @@ configure({
 
 const start = async (): Promise<void> => {
     const {
-        encryptionKey = "",
-        baseUrl = "http://play.dhis2.org/demo/api",
+        encryptionKey = "encryptionKey",
+        apiUrl: baseUrl = "https://play.dhis2.org/2.30/api",
         username = "admin",
         password = "district",
     } = appConfig;
