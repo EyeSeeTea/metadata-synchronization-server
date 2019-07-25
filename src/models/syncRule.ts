@@ -1,12 +1,14 @@
 import _ from "lodash";
+import moment from "moment";
+import cronstrue from "cronstrue";
 import { generateUid } from "d2/uid";
 
 import { deleteData, getDataById, getPaginatedData, saveData } from "./dataStore";
+import isValidCronExpression from "../utils/validCronExpression";
 import { D2 } from "../types/d2";
 import { SyncRuleTableFilters, TableList, TablePagination } from "../types/d2-ui-components";
 import { SynchronizationRule } from "../types/synchronization";
 import { Validation } from "../types/validations";
-import isValidCronExpression from "../utils/validCronExpression";
 
 const dataStoreKey = "rules";
 
@@ -45,7 +47,7 @@ export default class SyncRule {
     }
 
     public get enabled(): boolean {
-        return this.syncRule.enabled === "true";
+        return this.syncRule.enabled;
     }
 
     public get frequency(): string | undefined {
@@ -54,6 +56,20 @@ export default class SyncRule {
 
     public get lastExecuted(): Date | undefined {
         return this.syncRule.lastExecuted ? new Date(this.syncRule.lastExecuted) : undefined;
+    }
+
+    public get readableFrequency(): string | undefined {
+        const { frequency } = this.syncRule;
+        return frequency && isValidCronExpression(frequency)
+            ? cronstrue.toString(frequency)
+            : undefined;
+    }
+
+    public get longFrequency(): string | undefined {
+        const { frequency } = this.syncRule;
+        return frequency && isValidCronExpression(frequency)
+            ? `${cronstrue.toString(frequency)} (${frequency})`
+            : undefined;
     }
 
     public static create(): SyncRule {
@@ -65,7 +81,7 @@ export default class SyncRule {
                 targetInstances: [],
                 metadataIds: [],
             },
-            enabled: "false",
+            enabled: false,
         });
     }
 
@@ -83,16 +99,23 @@ export default class SyncRule {
         filters: SyncRuleTableFilters,
         pagination: TablePagination
     ): Promise<TableList> {
-        const { targetInstanceFilter = null } = filters || {};
+        const { targetInstanceFilter = null, enabledFilter = null, lastExecutedFilter = null } =
+            filters || {};
         const data = await getPaginatedData(d2, dataStoreKey, filters, pagination);
-        return targetInstanceFilter
-            ? {
-                  ...data,
-                  objects: _.filter(data.objects, e =>
-                      e.builder.targetInstances.includes(targetInstanceFilter)
-                  ),
-              }
-            : data;
+        const objects = _(data.objects)
+            .filter(rule =>
+                targetInstanceFilter
+                    ? rule.builder.targetInstances.includes(targetInstanceFilter)
+                    : true
+            )
+            .filter(rule => (enabledFilter ? rule.enabled && enabledFilter === "enabled" : true))
+            .filter(rule =>
+                lastExecutedFilter && rule.lastExecuted
+                    ? moment(lastExecutedFilter).isSameOrBefore(rule.lastExecuted)
+                    : true
+            )
+            .value();
+        return { ...data, objects };
     }
 
     public updateName(name: string): SyncRule {
@@ -132,7 +155,7 @@ export default class SyncRule {
     public updateEnabled(enabled: boolean): SyncRule {
         return SyncRule.build({
             ...this.syncRule,
-            enabled: enabled.toString(),
+            enabled,
         });
     }
 
