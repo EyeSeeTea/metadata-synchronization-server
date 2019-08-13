@@ -1,6 +1,7 @@
 import express from "express";
 import axios from "axios";
 import btoa from "btoa";
+import fs from "fs";
 import { init } from "d2";
 import { configure } from "log4js";
 import "dotenv/config";
@@ -8,7 +9,6 @@ import "dotenv/config";
 import indexRouter from "./routes";
 import Scheduler from "./logic/scheduler";
 import Instance from "./models/instance";
-import appConfig from "../app-config.json";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,7 +19,6 @@ app.use(express.urlencoded({ extended: false }));
 // Initialize express
 app.use("/", indexRouter);
 app.listen(PORT);
-console.log(`Server started on ${PORT}`);
 
 // Workaround: Hide DEBUG logs from appearing in console
 console.debug = (): void => {};
@@ -30,12 +29,21 @@ configure({
 });
 
 const start = async (): Promise<void> => {
+    let appConfig;
+    if (fs.existsSync("app-config.json")) {
+        appConfig = JSON.parse(fs.readFileSync("app-config.json", 'utf8'));
+    } else if (process.env.NODE_ENV === "development" && fs.existsSync("../app-config.json")) {
+        appConfig = JSON.parse(fs.readFileSync("../app-config.json", 'utf8'));
+    }
+
     const {
         encryptionKey = "encryptionKey",
         apiUrl: baseUrl = "https://play.dhis2.org/2.30/api",
         username = "admin",
         password = "district",
-    } = appConfig;
+    } = appConfig || {};
+
+    console.log(`Script initalized on ${baseUrl} with user ${username}`);
 
     // Login to the attached instance with basic auth
     const authorization = `Basic ${btoa(username + ":" + password)}`;

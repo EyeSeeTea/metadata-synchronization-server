@@ -12,6 +12,7 @@
     "start": "babel-watch src --extensions \".js,.jsx,.ts,.tsx\"",
     "clean": "rimraf build",
     "build": "babel src --out-dir build --extensions \".js,.jsx,.ts,.tsx\"",
+    "dist": "yarn build && ncc build build/ -m",
     "prettify": "prettier \"{.,src}/**/*.{js,jsx,ts,tsx,json,css}\" --write"
   },
   "dependencies": {
@@ -45,6 +46,7 @@
     "@types/node-schedule": "^1.2.3",
     "@typescript-eslint/eslint-plugin": "^1.12.0",
     "@typescript-eslint/parser": "^1.12.0",
+    "@zeit/ncc": "^0.20.4",
     "babel-eslint": "^10.0.2",
     "babel-watch": "^7.0.0",
     "eslint": "^5.12.1",
