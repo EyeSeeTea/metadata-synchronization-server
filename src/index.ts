@@ -30,10 +30,10 @@ configure({
 
 const start = async (): Promise<void> => {
     let appConfig;
-    if (fs.existsSync("app-config.json")) {
-        appConfig = JSON.parse(fs.readFileSync("app-config.json", 'utf8'));
-    } else if (process.env.NODE_ENV === "development" && fs.existsSync("../app-config.json")) {
+    if (process.env.NODE_ENV === "development" && fs.existsSync("../app-config.json")) {
         appConfig = JSON.parse(fs.readFileSync("../app-config.json", 'utf8'));
+    } else if (fs.existsSync("app-config.json")) {
+        appConfig = JSON.parse(fs.readFileSync("app-config.json", 'utf8'));
     }
 
     const {
