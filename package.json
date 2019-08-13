@@ -11,8 +11,11 @@
   "scripts": {
     "start": "babel-watch src --extensions \".js,.jsx,.ts,.tsx\"",
     "clean": "rimraf build",
+    "prebuild": "yarn clean",
     "build": "babel src --out-dir build --extensions \".js,.jsx,.ts,.tsx\"",
-    "dist": "yarn build && ncc build build/ -m",
+    "predist": "rimraf dist && yarn build",
+    "dist": "ncc build build/",
+    "postdist": "cp dist/index.js $npm_package_name.js",
     "prettify": "prettier \"{.,src}/**/*.{js,jsx,ts,tsx,json,css}\" --write"
   },
   "dependencies": {
