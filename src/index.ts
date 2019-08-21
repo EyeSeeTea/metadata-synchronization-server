@@ -4,6 +4,7 @@ import btoa from "btoa";
 import fs from "fs";
 import { init } from "d2";
 import { configure } from "log4js";
+import * as yargs from "yargs";
 import "dotenv/config";
 
 import indexRouter from "./routes";
@@ -28,12 +29,20 @@ configure({
     categories: { default: { appenders: ["file"], level: "debug" } },
 });
 
+const { c: configFile } = yargs.options({
+    c: {
+        type: "string",
+        demandOption: true,
+        alias: "config",
+    },
+}).argv;
+
 const start = async (): Promise<void> => {
     let appConfig;
     if (process.env.NODE_ENV === "development" && fs.existsSync("../app-config.json")) {
-        appConfig = JSON.parse(fs.readFileSync("../app-config.json", 'utf8'));
-    } else if (fs.existsSync("app-config.json")) {
-        appConfig = JSON.parse(fs.readFileSync("app-config.json", 'utf8'));
+        appConfig = JSON.parse(fs.readFileSync("../app-config.json", "utf8"));
+    } else if (fs.existsSync(configFile)) {
+        appConfig = JSON.parse(fs.readFileSync(configFile, "utf8"));
     }
 
     const {
