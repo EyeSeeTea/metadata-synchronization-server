@@ -29,28 +29,23 @@ configure({
     categories: { default: { appenders: ["file"], level: "debug" } },
 });
 
-const { c: configFile } = yargs.options({
+const { c: configFile } = process.env.NODE_ENV !== "development" ? yargs.options({
     c: {
         type: "string",
         demandOption: true,
         alias: "config",
     },
-}).argv;
+}).argv : { c: "../app-config.json" };
 
 const start = async (): Promise<void> => {
     let appConfig;
-    if (process.env.NODE_ENV === "development" && fs.existsSync("../app-config.json")) {
-        appConfig = JSON.parse(fs.readFileSync("../app-config.json", "utf8"));
-    } else if (fs.existsSync(configFile)) {
+    if (fs.existsSync(configFile)) {
         appConfig = JSON.parse(fs.readFileSync(configFile, "utf8"));
+    } else {
+        throw new Error("Config file not found");
     }
 
-    const {
-        encryptionKey = "encryptionKey",
-        apiUrl: baseUrl = "https://play.dhis2.org/2.30/api",
-        username = "admin",
-        password = "district",
-    } = appConfig || {};
+    const { encryptionKey, apiUrl: baseUrl, username, password } = appConfig;
 
     console.log(`Script initalized on ${baseUrl} with user ${username}`);
 
@@ -63,6 +58,6 @@ const start = async (): Promise<void> => {
     new Scheduler(d2).initialize();
 };
 
-start();
+start().catch(console.error);
 
 export default app;

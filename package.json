@@ -9,7 +9,7 @@
     "url": "git+https://github.com/eyeseetea/metadata-synchronization-server.git"
   },
   "scripts": {
-    "start": "babel-watch src --extensions \".js,.jsx,.ts,.tsx\"",
+    "start": "NODE_ENV=development babel-watch src --extensions \".js,.jsx,.ts,.tsx\"",
     "clean": "rimraf build",
     "prebuild": "yarn clean",
     "build": "babel src --out-dir build --extensions \".js,.jsx,.ts,.tsx\"",
