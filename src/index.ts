@@ -35,7 +35,7 @@ const { c: configFile } = process.env.NODE_ENV !== "development" ? yargs.options
         demandOption: true,
         alias: "config",
     },
-}).argv : { c: "../app-config.json" };
+}).argv : { c: "./app-config.json" };
 
 const start = async (): Promise<void> => {
     let appConfig;
