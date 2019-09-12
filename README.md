@@ -4,7 +4,25 @@
 $ yarn install
 ```
 
-File `app-config.json` must be created. If no configuration file is supplied the following is used as a placeholder:
+## Development
+
+Start development server:
+
+```
+$ yarn start
+```
+
+## Build executable
+
+```
+$ yarn dist
+```
+
+This will produce a bundled executable ```metadata-synchronization-server.js``` file that can be executed with ```node```.
+
+## Configuration file
+
+File `app-config.json` must be provided. If no configuration file is supplied the following is used as a placeholder:
 
 ```json
 {
@@ -14,18 +32,4 @@ File `app-config.json` must be created. If no configuration file is supplied the
     "password": "district"
 }
 
-```
-
-## Development
-
-Start development server:
-
-```
-$ yarn start
-```
-
-## Build
-
-```
-$ yarn build
 ```

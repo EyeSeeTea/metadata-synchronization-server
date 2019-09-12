@@ -1,14 +1,15 @@
 import express from "express";
 import axios from "axios";
 import btoa from "btoa";
+import fs from "fs";
 import { init } from "d2";
 import { configure } from "log4js";
+import * as yargs from "yargs";
 import "dotenv/config";
 
 import indexRouter from "./routes";
 import Scheduler from "./logic/scheduler";
 import Instance from "./models/instance";
-import appConfig from "../app-config.json";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,7 +20,6 @@ app.use(express.urlencoded({ extended: false }));
 // Initialize express
 app.use("/", indexRouter);
 app.listen(PORT);
-console.log(`Server started on ${PORT}`);
 
 // Workaround: Hide DEBUG logs from appearing in console
 console.debug = (): void => {};
@@ -29,13 +29,25 @@ configure({
     categories: { default: { appenders: ["file"], level: "debug" } },
 });
 
+const { c: configFile } = process.env.NODE_ENV !== "development" ? yargs.options({
+    c: {
+        type: "string",
+        demandOption: true,
+        alias: "config",
+    },
+}).argv : { c: "./app-config.json" };
+
 const start = async (): Promise<void> => {
-    const {
-        encryptionKey = "encryptionKey",
-        apiUrl: baseUrl = "https://play.dhis2.org/2.30/api",
-        username = "admin",
-        password = "district",
-    } = appConfig;
+    let appConfig;
+    if (fs.existsSync(configFile)) {
+        appConfig = JSON.parse(fs.readFileSync(configFile, "utf8"));
+    } else {
+        throw new Error("Config file not found");
+    }
+
+    const { encryptionKey, apiUrl: baseUrl, username, password } = appConfig;
+
+    console.log(`Script initalized on ${baseUrl} with user ${username}`);
 
     // Login to the attached instance with basic auth
     const authorization = `Basic ${btoa(username + ":" + password)}`;
@@ -46,6 +58,6 @@ const start = async (): Promise<void> => {
     new Scheduler(d2).initialize();
 };
 
-start();
+start().catch(console.error);
 
 export default app;

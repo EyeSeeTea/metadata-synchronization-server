@@ -1,1 +1,4 @@
 package.json
+build/
+dist/
+metadata-synchronization-server.js
