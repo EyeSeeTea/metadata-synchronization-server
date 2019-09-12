@@ -3,7 +3,7 @@ import axios from "axios";
 import btoa from "btoa";
 import fs from "fs";
 import { init } from "d2";
-import { configure } from "log4js";
+import { configure, getLogger } from "log4js";
 import * as yargs from "yargs";
 import "dotenv/config";
 
@@ -25,17 +25,23 @@ app.listen(PORT);
 console.debug = (): void => {};
 
 configure({
-    appenders: { file: { type: "file", filename: "debug.log" } },
-    categories: { default: { appenders: ["file"], level: "debug" } },
+    appenders: {
+        out: { type: "stdout" },
+        file: { type: "fileSync", filename: "debug.log" },
+    },
+    categories: { default: { appenders: ["file", "out"], level: "debug" } },
 });
 
-const { c: configFile } = process.env.NODE_ENV !== "development" ? yargs.options({
-    c: {
-        type: "string",
-        demandOption: true,
-        alias: "config",
-    },
-}).argv : { c: "./app-config.json" };
+const { c: configFile } =
+    process.env.NODE_ENV !== "development"
+        ? yargs.options({
+              c: {
+                  type: "string",
+                  demandOption: true,
+                  alias: "config",
+              },
+          }).argv
+        : { c: "./app-config.json" };
 
 const start = async (): Promise<void> => {
     let appConfig;
@@ -47,7 +53,9 @@ const start = async (): Promise<void> => {
 
     const { encryptionKey, apiUrl: baseUrl, username, password } = appConfig;
 
-    console.log(`Script initalized on ${baseUrl} with user ${username}`);
+    const welcomeMessage = `Script initalized on ${baseUrl} with user ${username}`;
+    getLogger("main").info("-".repeat(welcomeMessage.length));
+    getLogger("main").info(welcomeMessage);
 
     // Login to the attached instance with basic auth
     const authorization = `Basic ${btoa(username + ":" + password)}`;

@@ -26,10 +26,12 @@ export default class Scheduler {
             })) {
                 if (message) logger.debug(message);
                 if (syncReport) await syncReport.save(this.d2);
-                if (done && syncReport) logger.debug("Finished");
+                if (done && syncReport && syncReport.id)
+                    logger.debug(`Finished. Report available at ${this.buildUrl(syncReport.id)}`);
+                else if (done) logger.warn(`Finished with errors`);
             }
         } catch (error) {
-            logger.debug(`Failed executing rule`, error);
+            logger.error(`Failed executing rule`, error);
         }
     };
 
@@ -37,11 +39,7 @@ export default class Scheduler {
         const { objects: rules } = await SyncRule.list(this.d2, {}, { paging: false });
 
         const jobs = _.filter(rules, rule => rule.enabled);
-        const idsToCancel = _.difference(
-            _.keys(schedule.scheduledJobs),
-            ["__default__"],
-            jobs.map(job => job.id)
-        );
+        const idsToCancel = _.difference(_.keys(schedule.scheduledJobs), ["__default__"]);
 
         // Cancel disabled jobs that were scheduled
         idsToCancel.forEach((id: string): boolean => schedule.scheduledJobs[id].cancel());
@@ -51,16 +49,20 @@ export default class Scheduler {
             const { id, frequency } = syncRule;
 
             if (id && frequency) {
-                if (schedule.scheduledJobs[id]) schedule.rescheduleJob(id, frequency);
-                else
-                    schedule.scheduleJob(
-                        id,
-                        frequency,
-                        (): Promise<void> => this.synchronizationTask(syncRule)
-                    );
+                schedule.scheduleJob(
+                    id,
+                    frequency,
+                    (): Promise<void> => this.synchronizationTask(syncRule)
+                );
             }
         });
     };
+
+    private buildUrl(id: string): string {
+        return `${
+            this.d2.Api.getApi().baseUrl
+        }/apps/Metadata-Synchronization/index.html#/history/${id}`;
+    }
 
     public initialize(): void {
         // Execute fetch task immediately
@@ -68,5 +70,7 @@ export default class Scheduler {
 
         // Schedule periodic fetch task every minute
         schedule.scheduleJob("__default__", "0 * * * * *", this.fetchTask);
+
+        getLogger("main").info(`Loading synchronization rules from remote server`);
     }
 }
