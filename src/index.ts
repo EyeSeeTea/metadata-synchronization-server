@@ -27,7 +27,7 @@ console.debug = (): void => {};
 configure({
     appenders: {
         out: { type: "stdout" },
-        file: { type: "fileSync", filename: "debug.log" },
+        file: { type: "file", filename: "debug.log" },
     },
     categories: { default: { appenders: ["file", "out"], level: "debug" } },
 });
