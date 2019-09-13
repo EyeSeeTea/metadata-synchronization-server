@@ -42,13 +42,16 @@ const { config } = yargs.options({
         describe: "Configuration file",
         default: path.join(__dirname, rootFolder, "app-config.json"),
     },
+}).coerce("config", path => {
+    if (fs.existsSync(path)) {
+        return JSON.parse(fs.readFileSync(path, "utf8"));
+    } else {
+        throw new Error("Configuration file not found");
+    }
 }).argv;
 
 const start = async (): Promise<void> => {
-    const appConfig = fs.existsSync(config) ? JSON.parse(fs.readFileSync(config, "utf8")) : null;
-    if (!appConfig) throw new Error("Config file not found");
-
-    const { encryptionKey, apiUrl: baseUrl, username, password } = appConfig;
+    const { encryptionKey, apiUrl: baseUrl, username, password } = config;
 
     const welcomeMessage = `Script initalized on ${baseUrl} with user ${username}`;
     getLogger("main").info("-".repeat(welcomeMessage.length));
