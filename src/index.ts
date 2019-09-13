@@ -2,8 +2,9 @@ import express from "express";
 import axios from "axios";
 import btoa from "btoa";
 import fs from "fs";
+import path from "path";
 import { init } from "d2";
-import { configure } from "log4js";
+import { configure, getLogger } from "log4js";
 import * as yargs from "yargs";
 import "dotenv/config";
 
@@ -25,29 +26,36 @@ app.listen(PORT);
 console.debug = (): void => {};
 
 configure({
-    appenders: { file: { type: "file", filename: "debug.log" } },
-    categories: { default: { appenders: ["file"], level: "debug" } },
+    appenders: {
+        out: { type: "stdout" },
+        file: { type: "file", filename: "debug.log" },
+    },
+    categories: { default: { appenders: ["file", "out"], level: "debug" } },
 });
 
-const { c: configFile } = process.env.NODE_ENV !== "development" ? yargs.options({
-    c: {
+// Root folder on "yarn start" is ./src, ask path to go back one level
+const rootFolder = process.env.NODE_ENV === "development" ? ".." : "";
+const { config } = yargs.options({
+    config: {
         type: "string",
-        demandOption: true,
-        alias: "config",
+        alias: "c",
+        describe: "Configuration file",
+        default: path.join(__dirname, rootFolder, "app-config.json"),
     },
-}).argv : { c: "./app-config.json" };
+}).coerce("config", path => {
+    if (fs.existsSync(path)) {
+        return JSON.parse(fs.readFileSync(path, "utf8"));
+    } else {
+        throw new Error("Configuration file not found");
+    }
+}).argv;
 
 const start = async (): Promise<void> => {
-    let appConfig;
-    if (fs.existsSync(configFile)) {
-        appConfig = JSON.parse(fs.readFileSync(configFile, "utf8"));
-    } else {
-        throw new Error("Config file not found");
-    }
+    const { encryptionKey, apiUrl: baseUrl, username, password } = config;
 
-    const { encryptionKey, apiUrl: baseUrl, username, password } = appConfig;
-
-    console.log(`Script initalized on ${baseUrl} with user ${username}`);
+    const welcomeMessage = `Script initalized on ${baseUrl} with user ${username}`;
+    getLogger("main").info("-".repeat(welcomeMessage.length));
+    getLogger("main").info(welcomeMessage);
 
     // Login to the attached instance with basic auth
     const authorization = `Basic ${btoa(username + ":" + password)}`;
