@@ -2,6 +2,7 @@ import express from "express";
 import axios from "axios";
 import btoa from "btoa";
 import fs from "fs";
+import path from "path";
 import { init } from "d2";
 import { configure, getLogger } from "log4js";
 import * as yargs from "yargs";
@@ -32,24 +33,20 @@ configure({
     categories: { default: { appenders: ["file", "out"], level: "debug" } },
 });
 
-const { c: configFile } =
-    process.env.NODE_ENV !== "development"
-        ? yargs.options({
-              c: {
-                  type: "string",
-                  demandOption: true,
-                  alias: "config",
-              },
-          }).argv
-        : { c: "./app-config.json" };
+// Root folder on "yarn start" is ./src, ask path to go back one level
+const rootFolder = process.env.NODE_ENV === "development" ? ".." : "";
+const { config } = yargs.options({
+    config: {
+        type: "string",
+        alias: "c",
+        describe: "Configuration file",
+        default: path.join(__dirname, rootFolder, "app-config.json"),
+    },
+}).argv;
 
 const start = async (): Promise<void> => {
-    let appConfig;
-    if (fs.existsSync(configFile)) {
-        appConfig = JSON.parse(fs.readFileSync(configFile, "utf8"));
-    } else {
-        throw new Error("Config file not found");
-    }
+    const appConfig = fs.existsSync(config) ? JSON.parse(fs.readFileSync(config, "utf8")) : null;
+    if (!appConfig) throw new Error("Config file not found");
 
     const { encryptionKey, apiUrl: baseUrl, username, password } = appConfig;
 
