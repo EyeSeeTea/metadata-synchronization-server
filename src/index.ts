@@ -53,7 +53,7 @@ const { config } = yargs.options({
 const start = async (): Promise<void> => {
     const { encryptionKey, apiUrl: baseUrl, username, password } = config;
 
-    const welcomeMessage = `Script initalized on ${baseUrl} with user ${username}`;
+    const welcomeMessage = `Script initialized on ${baseUrl} with user ${username}`;
     getLogger("main").info("-".repeat(welcomeMessage.length));
     getLogger("main").info(welcomeMessage);
 
