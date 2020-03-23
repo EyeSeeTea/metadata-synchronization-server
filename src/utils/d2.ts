@@ -1,41 +1,133 @@
-import _ from "lodash";
-import "../utils/lodash-mixins";
 import i18n from "@dhis2/d2-i18n";
+import { D2ModelSchemas } from "d2-api";
+import { ObjectsTableDetailField, TableColumn } from "d2-ui-components";
+import _ from "lodash";
 import { D2, Params } from "../types/d2";
+import "../utils/lodash-mixins";
 
-export const d2BaseModelColumns = [
+const include = true as true;
+
+export interface MetadataType {
+    id: string;
+    name: string;
+    displayName: string;
+    shortName: string;
+    code: string;
+    description: string;
+    created: string;
+    lastUpdated: string;
+    href: string;
+    level?: number;
+    path?: string;
+    domainType?: "AGGREGATE" | "TRACKER" | "EVENT";
+    categoryCombo?: {
+        id: string;
+    };
+    optionSet?: {
+        id: string;
+    };
+    programType?: "WITHOUT_REGISTRATION" | "WITH_REGISTRATION";
+    __originalId__: string;
+    __mappingType__:
+        | keyof D2ModelSchemas
+        | "aggregatedDataElements"
+        | "programDataElements"
+        | "eventPrograms"
+        | "trackerPrograms";
+    __type__: keyof D2ModelSchemas;
+    [key: string]: string | number | object | undefined;
+}
+
+export const d2BaseModelColumns: TableColumn<MetadataType>[] = [
     { name: "displayName", text: i18n.t("Name"), sortable: true },
-    { name: "lastUpdated", text: i18n.t("Last update"), sortable: true },
+    { name: "shortName", text: i18n.t("Short name"), sortable: true, hidden: true },
+    { name: "code", text: i18n.t("Code"), sortable: true, hidden: true },
+    { name: "description", text: i18n.t("Description"), sortable: true, hidden: true },
+    { name: "created", text: i18n.t("Created"), sortable: true, hidden: true },
+    { name: "lastUpdated", text: i18n.t("Last updated"), sortable: true },
+    { name: "id", text: i18n.t("ID"), sortable: true, hidden: true },
+    { name: "href", text: i18n.t("API link"), sortable: false, hidden: true },
 ];
 
-export const organisationUnitsColumns = [
+export const d2BaseModelDetails: ObjectsTableDetailField<MetadataType>[] = _.map(
+    d2BaseModelColumns,
+    column => _.pick(column, ["name", "text", "getValue"])
+);
+
+export const organisationUnitsColumns: typeof d2BaseModelColumns = [
     { name: "displayName", text: i18n.t("Name"), sortable: true },
+    { name: "shortName", text: i18n.t("Short name"), sortable: true, hidden: true },
+    { name: "code", text: i18n.t("Code"), sortable: true, hidden: true },
     { name: "level", text: i18n.t("Level"), sortable: true },
-    { name: "lastUpdated", text: i18n.t("Last update"), sortable: true },
+    { name: "description", text: i18n.t("Description"), sortable: true, hidden: true },
+    { name: "created", text: i18n.t("Created"), sortable: true, hidden: true },
+    { name: "lastUpdated", text: i18n.t("Last updated"), sortable: true },
+    { name: "id", text: i18n.t("ID"), sortable: true, hidden: true },
+    { name: "href", text: i18n.t("API link"), sortable: false, hidden: true },
 ];
 
-export const d2BaseModelDetails = [
-    { name: "displayName", text: i18n.t("Name") },
-    { name: "shortName", text: i18n.t("Short name") },
-    { name: "code", text: i18n.t("Code") },
-    { name: "displayDescription", text: i18n.t("Description") },
-    { name: "created", text: i18n.t("Created") },
-    { name: "lastUpdated", text: i18n.t("Last update") },
-    { name: "id", text: i18n.t("ID") },
-    { name: "href", text: i18n.t("API link") },
-];
+export const organisationUnitsDetails: typeof d2BaseModelDetails = _.map(
+    organisationUnitsColumns,
+    column => _.pick(column, ["name", "text", "getValue"])
+);
 
-export const organisationUnitsDetails = [
-    { name: "displayName", text: i18n.t("Name") },
-    { name: "shortName", text: i18n.t("Short name") },
-    { name: "code", text: i18n.t("Code") },
-    { name: "level", text: i18n.t("Level") },
-    { name: "displayDescription", text: i18n.t("Description") },
-    { name: "created", text: i18n.t("Created") },
-    { name: "lastUpdated", text: i18n.t("Last update") },
-    { name: "id", text: i18n.t("ID") },
-    { name: "href", text: i18n.t("API link") },
-];
+export const d2BaseModelFields = {
+    id: include,
+    name: include,
+    displayName: include,
+    shortName: include,
+    code: include,
+    description: include,
+    created: include,
+    lastUpdated: include,
+    href: include,
+};
+
+export const dataElementFields = {
+    ...d2BaseModelFields,
+    domainType: include,
+    categoryCombo: include,
+    optionSet: include,
+};
+
+export const dataElementGroupFields = {
+    ...d2BaseModelFields,
+    dataElements: d2BaseModelFields,
+};
+
+export const dataElementGroupSetFields = {
+    ...d2BaseModelFields,
+    dataElementGroups: {
+        ...d2BaseModelFields,
+        dataElements: d2BaseModelFields,
+    },
+};
+
+export const dataSetFields = {
+    ...d2BaseModelFields,
+    dataSetElements: {
+        dataElement: dataElementFields,
+    },
+};
+
+export const programFields = {
+    ...d2BaseModelFields,
+    programType: include,
+    categoryCombo: include,
+    programStages: {
+        id: include,
+        displayName: include,
+        programStageDataElements: {
+            dataElement: dataElementFields,
+        },
+    },
+};
+
+export const organisationUnitFields = {
+    ...d2BaseModelFields,
+    level: include,
+    path: include,
+};
 
 export function cleanParams(options: Params): Params {
     return _.omitBy(options, value => _.isArray(value) && _.isEmpty(value));
@@ -62,7 +154,11 @@ export function cleanModelName(d2: D2, id: string, caller: string): string | nul
 }
 
 export function getClassName(className: string): string | undefined {
-    return _(className)
-        .split(".")
-        .last();
+    return _(className).split(".").last();
+}
+
+export async function getCurrentUserOrganisationUnits(d2: D2): Promise<string[]> {
+    const response: any = await d2.currentUser.getOrganisationUnits();
+    const organisationUnitsIds: string[] = [...response.valuesContainerMap.keys()];
+    return organisationUnitsIds;
 }

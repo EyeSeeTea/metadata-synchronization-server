@@ -35,20 +35,22 @@ configure({
 
 // Root folder on "yarn start" is ./src, ask path to go back one level
 const rootFolder = process.env.NODE_ENV === "development" ? ".." : "";
-const { config } = yargs.options({
-    config: {
-        type: "string",
-        alias: "c",
-        describe: "Configuration file",
-        default: path.join(__dirname, rootFolder, "app-config.json"),
-    },
-}).coerce("config", path => {
-    if (fs.existsSync(path)) {
-        return JSON.parse(fs.readFileSync(path, "utf8"));
-    } else {
-        throw new Error("Configuration file not found");
-    }
-}).argv;
+const { config } = yargs
+    .options({
+        config: {
+            type: "string",
+            alias: "c",
+            describe: "Configuration file",
+            default: path.join(__dirname, rootFolder, "app-config.json"),
+        },
+    })
+    .coerce("config", path => {
+        if (fs.existsSync(path)) {
+            return JSON.parse(fs.readFileSync(path, "utf8"));
+        } else {
+            throw new Error("Configuration file not found");
+        }
+    }).argv;
 
 const start = async (): Promise<void> => {
     const { encryptionKey, apiUrl: baseUrl, username, password } = config;

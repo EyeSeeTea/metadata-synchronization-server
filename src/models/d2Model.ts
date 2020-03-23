@@ -1,27 +1,44 @@
-import _ from "lodash";
+import {
+    D2Api,
+    D2DataSetSchema,
+    D2ModelSchemas,
+    D2ProgramSchema,
+    Model,
+    SelectedPick,
+} from "d2-api";
+import { ObjectsTableDetailField, TableColumn } from "d2-ui-components";
 import { isValidUid } from "d2/uid";
-
+import _ from "lodash";
+import { D2, ModelDefinition } from "../types/d2";
+import {
+    OrganisationUnitTableFilters,
+    TableFilters,
+    TableList,
+    TablePagination,
+} from "../types/d2-ui-components";
 import {
     cleanParams,
     d2BaseModelColumns,
     d2BaseModelDetails,
+    d2BaseModelFields,
+    dataElementFields,
+    dataElementGroupFields,
+    dataElementGroupSetFields,
+    dataSetFields,
+    MetadataType,
+    organisationUnitFields,
     organisationUnitsColumns,
     organisationUnitsDetails,
+    programFields,
 } from "../utils/d2";
-import {
-    OrganisationUnitTableFilters,
-    TableFilters,
-    TableLabel,
-    TableList,
-    TablePagination,
-} from "../types/d2-ui-components";
-import { D2, ModelDefinition } from "../types/d2";
 
 export abstract class D2Model {
     // Metadata Type should be defined on subclasses
     protected static metadataType: string;
-    protected static groupFilterName: string;
-    protected static levelFilterName: string;
+    protected static collectionName: keyof D2ModelSchemas;
+    protected static mappingType: string;
+    protected static groupFilterName: keyof D2ModelSchemas;
+    protected static levelFilterName: keyof D2ModelSchemas;
 
     protected static excludeRules: string[] = [];
     protected static includeRules: string[] = [];
@@ -29,7 +46,11 @@ export abstract class D2Model {
     // Other static properties can be optionally overridden on subclasses
     protected static columns = d2BaseModelColumns;
     protected static details = d2BaseModelDetails;
+    protected static fields = d2BaseModelFields;
     protected static initialSorting = ["name", "asc"];
+    protected static modelTransform: Function = (objects: MetadataType[]) => objects;
+    protected static modelFilters: any = {};
+    protected static childrenKeys: string[] | undefined = undefined;
 
     // List method should be executed by a wrapper to preserve static context binding
     public static async listMethod(
@@ -59,7 +80,7 @@ export abstract class D2Model {
         const filter = _.compact([
             search && isValidUid(search) ? `id:eq:${search}` : null,
             search && !isValidUid(search) ? `displayName:ilike:${search}` : null,
-            lastUpdatedDate ? `lastUpdated:ge:${lastUpdatedDate.toISOString()}` : null,
+            lastUpdatedDate ? `lastUpdated:ge:${lastUpdatedDate.format("YYYY-MM-DD")}` : null,
             groupFilter ? `${this.groupFilterName}.id:eq:${groupFilter}` : null,
             ...customFilters,
         ]);
@@ -70,11 +91,42 @@ export abstract class D2Model {
     }
 
     public static getD2Model(d2: D2): ModelDefinition {
-        return d2.models[this.metadataType];
+        return d2.models[this.collectionName];
+    }
+
+    public static getApiModel(api: D2Api): InstanceType<typeof Model> {
+        const modelCollection = api.models as {
+            [ModelName in keyof D2ModelSchemas]: Model<ModelName>;
+        };
+        return modelCollection[this.collectionName];
+    }
+
+    public static getApiModelTransform(): (objects: MetadataType[]) => MetadataType[] {
+        return (objects: MetadataType[]) =>
+            this.modelTransform(objects).map(
+                ({ __type__, __mappingType__, ...object }: MetadataType) => ({
+                    ...object,
+                    __type__: __type__ ?? this.collectionName,
+                    __mappingType__: __mappingType__ ?? this.mappingType,
+                })
+            );
+    }
+
+    // TODO: This should be typed (not priority)
+    public static getApiModelFilters(): any {
+        return this.modelFilters;
     }
 
     public static getMetadataType(): string {
         return this.metadataType;
+    }
+
+    public static getCollectionName(): keyof D2ModelSchemas {
+        return this.collectionName;
+    }
+
+    public static getMappingType(): string {
+        return this.mappingType ?? this.collectionName;
     }
 
     public static getExcludeRules(): string[][] {
@@ -85,31 +137,40 @@ export abstract class D2Model {
         return this.includeRules.map(_.toPath);
     }
 
-    public static getColumns(): TableLabel[] {
+    public static getColumns(): TableColumn<MetadataType>[] {
         return this.columns;
     }
 
-    public static getDetails(): TableLabel[] {
+    public static getDetails(): ObjectsTableDetailField<MetadataType>[] {
         return this.details;
+    }
+
+    public static getFields(): { [key: string]: true } {
+        return this.fields;
     }
 
     public static getInitialSorting(): string[] {
         return this.initialSorting;
     }
 
-    public static getGroupFilterName(): string {
+    public static getGroupFilterName(): keyof D2ModelSchemas {
         return this.groupFilterName;
     }
 
-    public static getLevelFilterName(): string {
+    public static getLevelFilterName(): keyof D2ModelSchemas {
         return this.levelFilterName;
+    }
+
+    public static getChildrenKeys(): string[] | undefined {
+        return this.childrenKeys;
     }
 }
 
 export class OrganisationUnitModel extends D2Model {
     protected static metadataType = "organisationUnit";
-    protected static groupFilterName = "organisationUnitGroups";
-    protected static levelFilterName = "organisationUnitLevels";
+    protected static collectionName = "organisationUnits" as const;
+    protected static groupFilterName = "organisationUnitGroups" as const;
+    protected static levelFilterName = "organisationUnitLevels" as const;
 
     protected static excludeRules = ["legendSets", "dataSets", "programs", "users"];
     protected static includeRules = [
@@ -119,8 +180,10 @@ export class OrganisationUnitModel extends D2Model {
         "organisationUnitGroups.organisationUnitGroupSets",
         "organisationUnitGroups.organisationUnitGroupSets.attributes",
     ];
+
     protected static columns = organisationUnitsColumns;
     protected static details = organisationUnitsDetails;
+    protected static fields = organisationUnitFields;
 
     public static async listMethod(
         d2: D2,
@@ -138,6 +201,7 @@ export class OrganisationUnitModel extends D2Model {
 
 export class OrganisationUnitGroupModel extends D2Model {
     protected static metadataType = "organisationUnitGroup";
+    protected static collectionName = "organisationUnitGroups" as const;
 
     protected static excludeRules = ["legendSets", "organisationUnits.organisationUnitGroups"];
     protected static includeRules = [
@@ -151,6 +215,7 @@ export class OrganisationUnitGroupModel extends D2Model {
 
 export class OrganisationUnitGroupSetModel extends D2Model {
     protected static metadataType = "organisationUnitGroupSet";
+    protected static collectionName = "organisationUnitGroupSets" as const;
 
     protected static excludeRules = [
         "organisationUnitGroups.organisationUnitGroupSets",
@@ -164,15 +229,26 @@ export class OrganisationUnitGroupSetModel extends D2Model {
     ];
 }
 
+export class OrganisationUnitLevelModel extends D2Model {
+    protected static metadataType = "organisationUnitLevel";
+    protected static collectionName = "organisationUnitLevels" as const;
+}
+
 export class DataElementModel extends D2Model {
     protected static metadataType = "dataElement";
-    protected static groupFilterName = "dataElementGroups";
+    protected static collectionName = "dataElements" as const;
+    protected static groupFilterName = "dataElementGroups" as const;
 
+    protected static excludeRules = [
+        "dataElementGroups.dataElements",
+        "dataElementGroups.dataElementGroupSets.dataElementGroups",
+    ];
     protected static includeRules = [
         "attributes",
         "dataSets",
         "legendSets",
         "optionSets",
+        "optionSets.options",
         "categoryCombos",
         "categoryCombos.attributes",
         "categoryCombos.categoryOptionCombos",
@@ -185,8 +261,26 @@ export class DataElementModel extends D2Model {
     ];
 }
 
+export class AggregatedDataElementModel extends DataElementModel {
+    protected static mappingType = "aggregatedDataElements";
+    protected static groupFilterName = DataElementModel.groupFilterName;
+    protected static fields = dataElementFields;
+
+    protected static modelFilters = { domainType: { eq: "AGGREGATE" } };
+}
+
+export class ProgramDataElementModel extends DataElementModel {
+    protected static mappingType = "programDataElements";
+    protected static groupFilterName = DataElementModel.groupFilterName;
+    protected static fields = dataElementFields;
+
+    protected static modelFilters = { domainType: { neq: "AGGREGATE" } };
+}
+
 export class DataElementGroupModel extends D2Model {
     protected static metadataType = "dataElementGroup";
+    protected static collectionName = "dataElementGroups" as const;
+    protected static fields = dataElementGroupFields;
 
     protected static excludeRules = ["legendSets", "dataElements.dataElementGroups"];
     protected static includeRules = [
@@ -200,6 +294,8 @@ export class DataElementGroupModel extends D2Model {
 
 export class DataElementGroupSetModel extends D2Model {
     protected static metadataType = "dataElementGroupSet";
+    protected static collectionName = "dataElementGroupSets" as const;
+    protected static fields = dataElementGroupSetFields;
 
     protected static excludeRules = [
         "dataElementGroups.dataElementGroupSets",
@@ -213,23 +309,156 @@ export class DataElementGroupSetModel extends D2Model {
     ];
 }
 
+export class DataSetModel extends D2Model {
+    protected static metadataType = "dataSet";
+    protected static collectionName = "dataSets" as const;
+    protected static fields = dataSetFields;
+    protected static childrenKeys = ["dataElements"];
+
+    protected static excludeRules = [
+        "indicators.dataSets",
+        "indicators.programs",
+        "dataElements.dataSets",
+        "dataElements.dataElementGroups.dataElements",
+        "dataElements.dataElementGroups.dataElementGroupSets.dataElementGroups",
+    ];
+    protected static includeRules = [
+        "attributes",
+        "legendSets",
+        "categoryCombos",
+        "categoryCombos.attributes",
+        "categoryCombos.categoryOptionCombos",
+        "categoryCombos.categoryOptionCombos.categoryOptions",
+        "categoryCombos.categories",
+        "indicators",
+        "indicators.attributes",
+        "indicators.legendSets",
+        "indicators.indicatorTypes",
+        "indicators.indicatorGroups",
+        "indicators.indicatorGroups.attributes",
+        "indicators.indicatorGroups.indicatorGroupSets",
+        "dataElements",
+        "dataElements.attributes",
+        "dataElements.legendSets",
+        "dataElements.optionSets",
+        "dataElements.optionSets.options",
+        "dataElements.categoryCombos",
+        "dataElements.categoryCombos.attributes",
+        "dataElements.categoryCombos.categoryOptionCombos",
+        "dataElements.categoryCombos.categoryOptionCombos.categoryOptions",
+        "dataElements.categoryCombos.categories",
+        "dataElements.dataElementGroups",
+        "dataElements.dataElementGroups.attributes",
+        "dataElements.dataElementGroups.dataElementGroupSets",
+        "dataElements.dataElementGroups.dataElementGroupSets.attributes",
+    ];
+
+    protected static modelTransform = (
+        dataSets: SelectedPick<D2DataSetSchema, typeof dataSetFields>[]
+    ) => {
+        return dataSets.map(({ dataSetElements = [], ...rest }) => ({
+            ...rest,
+            dataElements: dataSetElements.map(({ dataElement }) => ({
+                ...dataElement,
+                __type__: AggregatedDataElementModel.getCollectionName(),
+                __mappingType__: AggregatedDataElementModel.getMappingType(),
+            })),
+        }));
+    };
+}
+
+export class CategoryOptionModel extends D2Model {
+    protected static metadataType = "categoryOption";
+    protected static collectionName = "categoryOptions" as const;
+}
+
+export class CategoryComboModel extends D2Model {
+    protected static metadataType = "categoryCombo";
+    protected static collectionName = "categoryCombos" as const;
+}
+
+export class ProgramModel extends D2Model {
+    protected static metadataType = "program";
+    protected static collectionName = "programs" as const;
+    protected static fields = programFields;
+    protected static childrenKeys = ["dataElements"];
+
+    protected static modelTransform = (
+        objects: SelectedPick<D2ProgramSchema, typeof programFields>[]
+    ) => {
+        return objects.map(program => ({
+            ...program,
+            dataElements: _.flatten(
+                program.programStages?.map(
+                    ({ displayName, programStageDataElements, id: programStageId }) =>
+                        programStageDataElements
+                            .filter(({ dataElement }) => !!dataElement)
+                            .map(({ dataElement }) => ({
+                                ...dataElement,
+                                id: `${program.id}-${programStageId}-${dataElement.id}`,
+                                __originalId__: dataElement.id,
+                                __type__: ProgramDataElementModel.getCollectionName(),
+                                __mappingType__: ProgramDataElementModel.getMappingType(),
+                                displayName:
+                                    program.programStages.length > 1
+                                        ? `[${displayName}] ${dataElement.displayName}`
+                                        : dataElement.displayName,
+                            }))
+                ) ?? []
+            ),
+        }));
+    };
+}
+
+export class EventProgramModel extends ProgramModel {
+    protected static mappingType = "eventPrograms";
+    protected static groupFilterName = ProgramModel.groupFilterName;
+    protected static fields = programFields;
+
+    protected static modelFilters = { programType: { eq: "WITHOUT_REGISTRATION" } };
+}
+
+export class TrackerProgramModel extends ProgramModel {
+    protected static mappingType = "trackerPrograms";
+    protected static groupFilterName = ProgramModel.groupFilterName;
+    protected static fields = programFields;
+
+    protected static modelFilters = { programType: { eq: "WITH_REGISTRATION" } };
+}
+
+export class ProgramStageModel extends D2Model {
+    protected static metadataType = "programStage";
+    protected static collectionName = "programStages" as const;
+}
+
+export class OptionModel extends D2Model {
+    protected static metadataType = "option";
+    protected static collectionName = "options" as const;
+}
+
 export class IndicatorModel extends D2Model {
     protected static metadataType = "indicator";
-    protected static groupFilterName = "indicatorGroups";
+    protected static collectionName = "indicators" as const;
+    protected static groupFilterName = "indicatorGroups" as const;
 
     protected static excludeRules = ["dataSets", "programs"];
     protected static includeRules = [
         "attributes",
         "legendSets",
-        "indicatorType",
+        "indicatorTypes",
         "indicatorGroups",
         "indicatorGroups.attributes",
-        "indicatorGroups.indicatorGroupSet",
+        "indicatorGroups.indicatorGroupSets",
     ];
+}
+
+export class IndicatorMappedModel extends IndicatorModel {
+    protected static mappingType = AggregatedDataElementModel.getMappingType();
 }
 
 export class IndicatorGroupModel extends D2Model {
     protected static metadataType = "indicatorGroup";
+    protected static collectionName = "indicatorGroups" as const;
 
     protected static excludeRules = ["legendSets", "indicators.indicatorGroups"];
     protected static includeRules = [
@@ -243,6 +472,7 @@ export class IndicatorGroupModel extends D2Model {
 
 export class IndicatorGroupSetModel extends D2Model {
     protected static metadataType = "indicatorGroupSet";
+    protected static collectionName = "indicatorGroupSets" as const;
 
     protected static excludeRules = [
         "indicatorGroups.indicatorGroupSets",
@@ -256,9 +486,52 @@ export class IndicatorGroupSetModel extends D2Model {
     ];
 }
 
+export class ProgramIndicatorModel extends D2Model {
+    protected static metadataType = "programIndicator";
+    protected static collectionName = "programIndicators" as const;
+    protected static groupFilterName = "programIndicatorGroups" as const;
+
+    protected static excludeRules = ["programs"];
+    protected static includeRules = [
+        "attributes",
+        "legendSets",
+        "programIndicatorGroups",
+        "programIndicatorGroups.attributes",
+    ];
+}
+
+export class ProgramIndicatorGroupModel extends D2Model {
+    protected static metadataType = "programIndicatorGroup";
+    protected static collectionName = "programIndicatorGroups" as const;
+
+    protected static excludeRules = ["legendSets", "programIndicators.programIndicatorGroups"];
+    protected static includeRules = [
+        "attributes",
+        "programIndicators",
+        "programIndicators.attributes",
+    ];
+}
+
+export class ProgramRuleModel extends D2Model {
+    protected static metadataType = "programRule";
+    protected static collectionName = "programRules" as const;
+
+    protected static excludeRules = [];
+    protected static includeRules = ["attributes", "programRuleActions"];
+}
+
+export class ProgramRuleVariableModel extends D2Model {
+    protected static metadataType = "programRuleVariable";
+    protected static collectionName = "programRuleVariables" as const;
+
+    protected static excludeRules = [];
+    protected static includeRules = ["attributes"];
+}
+
 export class ValidationRuleModel extends D2Model {
     protected static metadataType = "validationRule";
-    protected static groupFilterName = "validationRuleGroups";
+    protected static collectionName = "validationRules" as const;
+    protected static groupFilterName = "validationRuleGroups" as const;
 
     protected static excludeRules = ["legendSets"];
     protected static includeRules = [
@@ -270,13 +543,41 @@ export class ValidationRuleModel extends D2Model {
 
 export class ValidationRuleGroupModel extends D2Model {
     protected static metadataType = "validationRuleGroup";
+    protected static collectionName = "validationRuleGroups" as const;
 
     protected static excludeRules = ["legendSets", "validationRules.validationRuleGroups"];
     protected static includeRules = ["attributes", "validationRules", "validationRules.attributes"];
 }
 
+export class DashboardModel extends D2Model {
+    protected static metadataType = "dashboard";
+    protected static collectionName = "dashboards" as const;
+    //protected static groupFilterName = "indicatorGroups" as const;
+
+    protected static excludeRules = [];
+    protected static includeRules = [
+        "dashboardItems",
+        "charts",
+        "eventCharts",
+        "pivotTables",
+        "eventReports",
+        "maps",
+        "reports",
+        "reportTables",
+    ];
+}
+
+export class UserGroupModel extends D2Model {
+    protected static metadataType = "userGroup";
+    protected static collectionName = "userGroups" as const;
+
+    protected static excludeRules = [];
+    protected static includeRules = ["users"];
+}
+
 export function defaultModel(pascalCaseModelName: string): any {
     return class DefaultModel extends D2Model {
         protected static metadataType = pascalCaseModelName;
+        protected static collectionName = pascalCaseModelName as keyof D2ModelSchemas;
     };
 }

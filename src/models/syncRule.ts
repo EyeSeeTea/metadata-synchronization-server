@@ -1,14 +1,27 @@
+import cronstrue from "cronstrue";
+import { D2Api } from "d2-api";
+import { generateUid } from "d2/uid";
 import _ from "lodash";
 import moment from "moment";
-import cronstrue from "cronstrue";
-import { generateUid } from "d2/uid";
-
-import { deleteData, getDataById, getPaginatedData, saveData } from "./dataStore";
-import isValidCronExpression from "../utils/validCronExpression";
-import { D2 } from "../types/d2";
 import { SyncRuleTableFilters, TableList, TablePagination } from "../types/d2-ui-components";
-import { SynchronizationRule } from "../types/synchronization";
+import {
+    DataSyncAggregation,
+    DataSynchronizationParams,
+    DataSyncPeriod,
+    ExcludeIncludeRules,
+    MetadataIncludeExcludeRules,
+    MetadataSynchronizationParams,
+    SharingSetting,
+    SynchronizationBuilder,
+    SynchronizationRule,
+    SyncRuleType,
+} from "../types/synchronization";
 import { Validation } from "../types/validations";
+import { extractChildrenFromRules, extractParentsFromRule } from "../utils/metadataIncludeExclude";
+import { getUserInfo, isGlobalAdmin, UserInfo } from "../utils/permissions";
+import isValidCronExpression from "../utils/validCronExpression";
+import { D2Model } from "./d2Model";
+import { deleteData, getDataById, getPaginatedData, saveData } from "./dataStore";
 
 const dataStoreKey = "rules";
 
@@ -16,38 +29,127 @@ export default class SyncRule {
     private readonly syncRule: SynchronizationRule;
 
     constructor(syncRule: SynchronizationRule) {
-        this.syncRule = {
-            id: generateUid(),
-            ..._.pick(syncRule, [
-                "id",
-                "name",
-                "description",
-                "builder",
-                "enabled",
-                "frequency",
-                "lastExecuted",
-            ]),
-        };
+        this.syncRule = _.pick(syncRule, [
+            "id",
+            "name",
+            "code",
+            "created",
+            "description",
+            "builder",
+            "enabled",
+            "frequency",
+            "lastExecuted",
+            "lastUpdated",
+            "lastUpdatedBy",
+            "publicAccess",
+            "user",
+            "userAccesses",
+            "userGroupAccesses",
+            "type",
+        ]);
+
+        if (!this.syncRule.id) this.syncRule.id = generateUid();
+    }
+
+    public replicate(): SyncRule {
+        return this.updateName(`Copy of ${this.syncRule.name}`).updateId(generateUid());
+    }
+
+    public toObject(): SynchronizationRule {
+        return _.clone(this.syncRule);
+    }
+
+    public get id(): string {
+        return this.syncRule.id ?? "";
     }
 
     public get name(): string {
-        return this.syncRule.name;
+        return this.syncRule.name ?? "";
+    }
+
+    public get type(): SyncRuleType {
+        return this.syncRule.type || "metadata";
+    }
+
+    public get code(): string | undefined {
+        return this.syncRule.code;
     }
 
     public get description(): string | undefined {
         return this.syncRule.description;
     }
 
+    public get builder(): SynchronizationBuilder {
+        return this.syncRule.builder ?? {};
+    }
+
     public get metadataIds(): string[] {
-        return this.syncRule.builder.metadataIds;
+        return this.syncRule.builder?.metadataIds ?? [];
+    }
+
+    public get excludedIds(): string[] {
+        return this.syncRule.builder?.excludedIds ?? [];
+    }
+
+    public get metadataTypes(): string[] {
+        return this.syncRule.builder?.metadataTypes ?? [];
+    }
+
+    public get dataSyncAttributeCategoryOptions(): string[] {
+        return this.syncRule.builder?.dataParams?.attributeCategoryOptions ?? [];
+    }
+
+    public get dataSyncAllAttributeCategoryOptions(): boolean {
+        return this.syncRule.builder?.dataParams?.allAttributeCategoryOptions ?? false;
+    }
+
+    public get dataSyncOrgUnitPaths(): string[] {
+        return this.syncRule.builder?.dataParams?.orgUnitPaths ?? [];
+    }
+
+    public get dataSyncPeriod(): DataSyncPeriod {
+        return this.syncRule.builder?.dataParams?.period ?? "ALL";
+    }
+
+    public get dataSyncStartDate(): Date | null {
+        return this.syncRule.builder?.dataParams?.startDate ?? null;
+    }
+
+    public get dataSyncEndDate(): Date | null {
+        return this.syncRule.builder?.dataParams?.endDate ?? null;
+    }
+
+    public get dataSyncEvents(): string[] {
+        return this.syncRule.builder?.dataParams?.events ?? [];
+    }
+
+    public get dataSyncAllEvents(): boolean {
+        return this.syncRule.builder?.dataParams?.allEvents ?? true;
+    }
+
+    public get dataSyncEnableAggregation(): boolean {
+        const defaultValue = this.metadataTypes.includes("indicators");
+        return this.syncRule.builder?.dataParams?.enableAggregation ?? defaultValue;
+    }
+
+    public get dataSyncAggregationType(): DataSyncAggregation | undefined {
+        return this.syncRule.builder?.dataParams?.aggregationType;
+    }
+
+    public get useDefaultIncludeExclude(): boolean {
+        return this.syncRule.builder?.syncParams?.useDefaultIncludeExclude ?? true;
+    }
+
+    public get metadataIncludeExcludeRules(): MetadataIncludeExcludeRules {
+        return this.syncRule.builder?.syncParams?.metadataIncludeExcludeRules ?? {};
     }
 
     public get targetInstances(): string[] {
-        return this.syncRule.builder.targetInstances;
+        return this.syncRule.builder?.targetInstances ?? [];
     }
 
     public get enabled(): boolean {
-        return this.syncRule.enabled;
+        return this.syncRule.enabled ?? false;
     }
 
     public get frequency(): string | undefined {
@@ -72,56 +174,173 @@ export default class SyncRule {
             : undefined;
     }
 
-    public static create(): SyncRule {
+    public get publicAccess(): string {
+        return this.syncRule.publicAccess ?? "--------";
+    }
+
+    public get userAccesses(): SharingSetting[] {
+        return this.syncRule.userAccesses ?? [];
+    }
+
+    public get userGroupAccesses(): SharingSetting[] {
+        return this.syncRule.userGroupAccesses ?? [];
+    }
+
+    public get syncParams(): MetadataSynchronizationParams {
+        return (
+            this.syncRule.builder?.syncParams ?? {
+                includeSharingSettings: true,
+                useDefaultIncludeExclude: true,
+            }
+        );
+    }
+
+    public get dataParams(): DataSynchronizationParams {
+        return this.syncRule.builder?.dataParams ?? {};
+    }
+
+    public static create(type: SyncRuleType = "metadata"): SyncRule {
         return new SyncRule({
             id: "",
             name: "",
+            code: "",
+            created: new Date(),
             description: "",
+            type: type,
             builder: {
                 targetInstances: [],
                 metadataIds: [],
+                excludedIds: [],
+                metadataTypes: [],
+                dataParams: {
+                    strategy: "NEW_AND_UPDATES",
+                    allAttributeCategoryOptions: true,
+                    dryRun: false,
+                    allEvents: true,
+                    enableAggregation: undefined,
+                    aggregationType: undefined,
+                },
+                syncParams: {
+                    importStrategy: "CREATE_AND_UPDATE",
+                    includeSharingSettings: true,
+                    useDefaultIncludeExclude: true,
+                    atomicMode: "ALL",
+                    mergeMode: "MERGE",
+                    importMode: "COMMIT",
+                },
             },
             enabled: false,
+            lastUpdated: new Date(),
+            lastUpdatedBy: {
+                id: "",
+                name: "",
+            },
+            publicAccess: "rw------",
+            user: {
+                id: "",
+                name: "",
+            },
+            userAccesses: [],
+            userGroupAccesses: [],
         });
+    }
+
+    public static createOnDemand(type: SyncRuleType = "metadata"): SyncRule {
+        return SyncRule.create(type).updateName("__MANUAL__");
     }
 
     public static build(syncRule: SynchronizationRule | undefined): SyncRule {
         return syncRule ? new SyncRule(syncRule) : this.create();
     }
 
-    public static async get(d2: D2, id: string): Promise<SyncRule> {
-        const data = await getDataById(d2, dataStoreKey, id);
+    public static async get(api: D2Api, id: string): Promise<SyncRule> {
+        const data = await getDataById(api, dataStoreKey, id);
         return this.build(data);
     }
 
     public static async list(
-        d2: D2,
+        api: D2Api,
         filters: SyncRuleTableFilters,
         pagination: TablePagination
     ): Promise<TableList> {
-        const { targetInstanceFilter = null, enabledFilter = null, lastExecutedFilter = null } =
-            filters || {};
-        const data = await getPaginatedData(d2, dataStoreKey, filters, pagination);
-        const objects = _(data.objects)
+        const {
+            targetInstanceFilter = null,
+            enabledFilter = null,
+            lastExecutedFilter = null,
+            type = "metadata",
+        } = filters || {};
+        const { page = 1, pageSize = 20, paging = true, sorting } = pagination || {};
+
+        const globalAdmin = await isGlobalAdmin(api);
+        const userInfo = await getUserInfo(api);
+
+        const data = await getPaginatedData(api, dataStoreKey, filters, { paging: false, sorting });
+        const filteredObjects = _(data.objects)
+            .filter(data => {
+                const rule = SyncRule.build(data);
+                return rule.type === type;
+            })
+            .filter(data => {
+                const rule = SyncRule.build(data);
+                return globalAdmin || rule.isVisibleToUser(userInfo);
+            })
             .filter(rule =>
                 targetInstanceFilter
-                    ? rule.builder.targetInstances.includes(targetInstanceFilter)
+                    ? rule.builder?.targetInstances.includes(targetInstanceFilter)
                     : true
             )
-            .filter(rule => (enabledFilter ? rule.enabled && enabledFilter === "enabled" : true))
+            .filter(rule => {
+                if (!enabledFilter) return true;
+                return (
+                    (rule.enabled && enabledFilter === "enabled") ||
+                    (!rule.enabled && enabledFilter === "disabled")
+                );
+            })
             .filter(rule =>
                 lastExecutedFilter && rule.lastExecuted
-                    ? moment(lastExecutedFilter).isSameOrBefore(rule.lastExecuted)
+                    ? moment(lastExecutedFilter).isSameOrBefore(rule.lastExecuted, "date")
                     : true
             )
             .value();
-        return { ...data, objects };
+
+        const total = filteredObjects.length;
+        const pageCount = paging ? Math.ceil(filteredObjects.length / pageSize) : 1;
+        const firstItem = paging ? (page - 1) * pageSize : 0;
+        const lastItem = paging ? firstItem + pageSize : total;
+        const objects = _.slice(filteredObjects, firstItem, lastItem);
+
+        return { objects, pager: { page, pageCount, total } };
+    }
+
+    public toBuilder(): SynchronizationBuilder {
+        return _.pick(this, [
+            "metadataIds",
+            "excludedIds",
+            "metadataTypes",
+            "targetInstances",
+            "syncParams",
+            "dataParams",
+        ]);
+    }
+
+    public updateId(id: string): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            id,
+        });
     }
 
     public updateName(name: string): SyncRule {
         return SyncRule.build({
             ...this.syncRule,
             name,
+        });
+    }
+
+    public updateCode(code: string): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            code,
         });
     }
 
@@ -133,11 +352,264 @@ export default class SyncRule {
     }
 
     public updateMetadataIds(metadataIds: string[]): SyncRule {
+        const data = _(_.cloneDeep(this.syncRule))
+            .set(["builder", "metadataIds"], metadataIds)
+            .set(["builder", "syncParams", "useDefaultIncludeExclude"], true)
+            .set(["builder", "syncParams", "metadataIncludeExcludeRules"], {})
+            .value();
+
+        return SyncRule.build(data);
+    }
+
+    public markToUseDefaultIncludeExclude(): SyncRule {
+        const data = _(_.cloneDeep(this.syncRule))
+            .set(["builder", "syncParams", "useDefaultIncludeExclude"], true)
+            .set(["builder", "syncParams", "metadataIncludeExcludeRules"], {})
+            .value();
+
+        return SyncRule.build(data);
+    }
+
+    public markToNotUseDefaultIncludeExclude(models: Array<typeof D2Model>): SyncRule {
+        const rules: MetadataIncludeExcludeRules = models.reduce(
+            (accumulator: any, model: typeof D2Model) => ({
+                ...accumulator,
+                [model.getMetadataType()]: {
+                    includeRules: model.getIncludeRules().map(array => array.join(".")),
+                    excludeRules: model.getExcludeRules().map(array => array.join(".")),
+                },
+            }),
+            {}
+        );
+
+        const data = _(_.cloneDeep(this.syncRule))
+            .set(["builder", "syncParams", "useDefaultIncludeExclude"], false)
+            .set(["builder", "syncParams", "metadataIncludeExcludeRules"], rules)
+            .value();
+
+        return SyncRule.build(data);
+    }
+
+    public moveRuleFromExcludeToInclude(type: string, rulesToInclude: string[]): SyncRule {
+        const {
+            includeRules: oldIncludeRules,
+            excludeRules: oldExcludeRules,
+        } = this.metadataIncludeExcludeRules[type];
+
+        if (_.difference(rulesToInclude, oldExcludeRules).length > 0) {
+            throw Error(
+                "Rules error: It's not possible move rules that do not exist in exclude to include"
+            );
+        }
+
+        const rulesToIncludeWithParents = _(rulesToInclude)
+            .map(extractParentsFromRule)
+            .flatten()
+            .union(rulesToInclude)
+            .uniq()
+            .value();
+
+        const excludeIncludeRules = {
+            includeRules: _.uniq([...oldIncludeRules, ...rulesToIncludeWithParents]),
+            excludeRules: oldExcludeRules.filter(rule => !rulesToIncludeWithParents.includes(rule)),
+        };
+
+        return this.updateIncludeExcludeRules(type, excludeIncludeRules);
+    }
+
+    public moveRuleFromIncludeToExclude(type: string, rulesToExclude: string[]): SyncRule {
+        const {
+            includeRules: oldIncludeRules,
+            excludeRules: oldExcludeRules,
+        } = this.metadataIncludeExcludeRules[type];
+
+        if (_.difference(rulesToExclude, oldIncludeRules).length > 0) {
+            throw Error(
+                "Rules error: It's not possible move rules that do not exist in include to exclude"
+            );
+        }
+
+        const rulesToExcludeWithChildren = _(rulesToExclude)
+            .map(rule => extractChildrenFromRules(rule, oldIncludeRules))
+            .flatten()
+            .union(rulesToExclude)
+            .uniq()
+            .value();
+
+        const excludeIncludeRules = {
+            includeRules: oldIncludeRules.filter(
+                rule => !rulesToExcludeWithChildren.includes(rule)
+            ),
+            excludeRules: [...oldExcludeRules, ...rulesToExcludeWithChildren],
+        };
+
+        return this.updateIncludeExcludeRules(type, excludeIncludeRules);
+    }
+
+    private updateIncludeExcludeRules(
+        type: string,
+        excludeIncludeRules: ExcludeIncludeRules
+    ): SyncRule {
+        const rules = {
+            ...this.metadataIncludeExcludeRules,
+            [type]: excludeIncludeRules,
+        };
+
+        const data = _(_.cloneDeep(this.syncRule))
+            .set(["builder", "syncParams", "metadataIncludeExcludeRules"], rules)
+            .value();
+
+        return SyncRule.build(data);
+    }
+
+    public updateExcludedIds(excludedIds: string[]): SyncRule {
         return SyncRule.build({
             ...this.syncRule,
             builder: {
                 ...this.syncRule.builder,
-                metadataIds,
+                excludedIds,
+            },
+        });
+    }
+
+    public updateMetadataTypes(metadataTypes: string[]): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            builder: {
+                ...this.syncRule.builder,
+                metadataTypes,
+            },
+        });
+    }
+
+    public updateDataSyncAttributeCategoryOptions(attributeCategoryOptions?: string[]): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            builder: {
+                ...this.syncRule.builder,
+                dataParams: {
+                    ...this.syncRule.builder?.dataParams,
+                    attributeCategoryOptions,
+                },
+            },
+        });
+    }
+
+    public updateDataSyncAllAttributeCategoryOptions(
+        allAttributeCategoryOptions?: boolean
+    ): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            builder: {
+                ...this.syncRule.builder,
+                dataParams: {
+                    ...this.syncRule.builder?.dataParams,
+                    allAttributeCategoryOptions,
+                },
+            },
+        });
+    }
+
+    public updateDataSyncOrgUnitPaths(orgUnitPaths: string[]): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            builder: {
+                ...this.syncRule.builder,
+                dataParams: {
+                    ...this.syncRule.builder?.dataParams,
+                    orgUnitPaths,
+                },
+            },
+        });
+    }
+
+    public updateDataSyncPeriod(period?: DataSyncPeriod): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            builder: {
+                ...this.syncRule.builder,
+                dataParams: {
+                    ...this.syncRule.builder?.dataParams,
+                    period,
+                },
+            },
+        });
+    }
+
+    public updateDataSyncStartDate(startDate?: Date): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            builder: {
+                ...this.syncRule.builder,
+                dataParams: {
+                    ...this.syncRule.builder?.dataParams,
+                    startDate,
+                },
+            },
+        });
+    }
+
+    public updateDataSyncEndDate(endDate?: Date): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            builder: {
+                ...this.syncRule.builder,
+                dataParams: {
+                    ...this.syncRule.builder?.dataParams,
+                    endDate,
+                },
+            },
+        });
+    }
+
+    public updateDataSyncEvents(events?: string[]): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            builder: {
+                ...this.syncRule.builder,
+                dataParams: {
+                    ...this.syncRule.builder?.dataParams,
+                    events,
+                },
+            },
+        });
+    }
+
+    public updateDataSyncAllEvents(allEvents?: boolean): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            builder: {
+                ...this.syncRule.builder,
+                dataParams: {
+                    ...this.syncRule.builder?.dataParams,
+                    allEvents,
+                },
+            },
+        });
+    }
+
+    public updateDataSyncEnableAggregation(enableAggregation?: boolean): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            builder: {
+                ...this.syncRule.builder,
+                dataParams: {
+                    ...this.syncRule.builder?.dataParams,
+                    enableAggregation,
+                },
+            },
+        });
+    }
+
+    public updateDataSyncAggregationType(aggregationType?: DataSyncAggregation): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            builder: {
+                ...this.syncRule.builder,
+                dataParams: {
+                    ...this.syncRule.builder?.dataParams,
+                    aggregationType,
+                },
             },
         });
     }
@@ -148,6 +620,26 @@ export default class SyncRule {
             builder: {
                 ...this.syncRule.builder,
                 targetInstances,
+            },
+        });
+    }
+
+    public updateSyncParams(syncParams: MetadataSynchronizationParams): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            builder: {
+                ...this.syncRule.builder,
+                syncParams,
+            },
+        });
+    }
+
+    public updateDataParams(dataParams: DataSynchronizationParams): SyncRule {
+        return SyncRule.build({
+            ...this.syncRule,
+            builder: {
+                ...this.syncRule.builder,
+                dataParams,
             },
         });
     }
@@ -173,16 +665,53 @@ export default class SyncRule {
         });
     }
 
-    public async save(d2: D2): Promise<void> {
-        const exists = !!this.syncRule.id;
-        const element = exists ? this.syncRule : { ...this.syncRule, id: generateUid() };
-
-        if (exists) await this.remove(d2);
-        await saveData(d2, dataStoreKey, element);
+    public isOnDemand() {
+        return this.name === "__MANUAL__";
     }
 
-    public async remove(d2: D2): Promise<void> {
-        await deleteData(d2, dataStoreKey, this.syncRule);
+    public isVisibleToUser(userInfo: UserInfo, permission: "READ" | "WRITE" = "READ") {
+        const { id: userId, userGroups } = userInfo;
+        const token = permission === "READ" ? "r" : "w";
+        const {
+            publicAccess = "--------",
+            userAccesses = [],
+            userGroupAccesses = [],
+        } = this.syncRule;
+
+        const isUserOwner = this.syncRule.user ? this.syncRule.user.id === userId : false;
+        const isPublic = publicAccess.substring(0, 2).includes(token);
+        const hasUserAccess = !!_(userAccesses)
+            .filter(({ access }) => access.substring(0, 2).includes(token))
+            .find(({ id }) => id === userId);
+        const hasGroupAccess =
+            _(userGroupAccesses)
+                .filter(({ access }) => access.substring(0, 2).includes(token))
+                .intersectionBy(userGroups, "id")
+                .value().length > 0;
+
+        return isUserOwner || isPublic || hasUserAccess || hasGroupAccess;
+    }
+
+    public async save(api: D2Api): Promise<SyncRule> {
+        const userInfo = await getUserInfo(api);
+        const user = _.pick(userInfo, ["id", "name"]);
+        const exists = !!this.syncRule.id;
+        const element = exists
+            ? this.syncRule
+            : { ...this.syncRule, id: generateUid(), created: new Date(), user };
+
+        if (exists) await this.remove(api);
+        await saveData(api, dataStoreKey, {
+            ...element,
+            lastUpdated: new Date(),
+            lastUpdatedBy: user,
+        });
+
+        return new SyncRule(element);
+    }
+
+    public async remove(api: D2Api): Promise<void> {
+        await deleteData(api, dataStoreKey, this.syncRule);
     }
 
     public async validate(): Promise<Validation> {
@@ -203,6 +732,62 @@ export default class SyncRule {
                       }
                     : null,
             ]),
+            dataSyncOrganisationUnits: _.compact([
+                this.type !== "metadata" &&
+                this.type !== "deleted" &&
+                this.dataSyncOrgUnitPaths.length === 0
+                    ? {
+                          key: "cannot_be_empty",
+                          namespace: { element: "organisation unit" },
+                      }
+                    : null,
+            ]),
+            dataSyncStartDate: _.compact([
+                this.dataSyncPeriod === "FIXED" && !this.dataSyncStartDate
+                    ? {
+                          key: "cannot_be_empty",
+                          namespace: { element: "start date" },
+                      }
+                    : null,
+            ]),
+            dataSyncEndDate: _.compact([
+                this.dataSyncPeriod === "FIXED" && !this.dataSyncEndDate
+                    ? {
+                          key: "cannot_be_empty",
+                          namespace: { element: "end date" },
+                      }
+                    : null,
+                this.dataSyncPeriod === "FIXED" &&
+                this.dataSyncEndDate &&
+                this.dataSyncStartDate &&
+                moment(this.dataSyncEndDate).isBefore(this.dataSyncStartDate)
+                    ? {
+                          key: "invalid_period",
+                          namespace: {},
+                      }
+                    : null,
+            ]),
+            dataSyncEvents: _.compact([
+                this.type === "events" &&
+                !this.dataSyncAllEvents &&
+                this.dataSyncEvents.length === 0
+                    ? {
+                          key: "cannot_be_empty",
+                          namespace: { element: "event" },
+                      }
+                    : null,
+            ]),
+            dataSyncAggregation: _.compact([
+                this.type === "aggregated" &&
+                this.dataSyncEnableAggregation &&
+                !this.dataSyncAggregationType
+                    ? {
+                          key: "cannot_be_empty",
+                          namespace: { element: "aggregation type" },
+                      }
+                    : null,
+            ]),
+            metadataIncludeExclude: [],
             targetInstances: _.compact([
                 this.targetInstances.length === 0
                     ? {
@@ -228,5 +813,10 @@ export default class SyncRule {
                     : null,
             ]),
         });
+    }
+
+    public async isValid(): Promise<boolean> {
+        const validation = await this.validate();
+        return _.flatten(Object.values(validation)).length === 0;
     }
 }
