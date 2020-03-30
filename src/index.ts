@@ -1,6 +1,7 @@
-import axios from "axios";
+import axiosRetry from "axios-retry";
 import btoa from "btoa";
 import { init } from "d2";
+import { D2ApiDefault, D2Api } from "d2-api";
 import "dotenv/config";
 import express from "express";
 import fs from "fs";
@@ -9,9 +10,10 @@ import { configure, getLogger } from "log4js";
 import path from "path";
 import * as yargs from "yargs";
 import Scheduler from "./logic/scheduler";
+import { MigrationsRunner } from "./migrations";
+import { getMigrationsForNode } from "./migrations/utils";
 import Instance from "./models/instance";
 import indexRouter from "./routes";
-import { D2ApiDefault } from "d2-api";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -54,17 +56,28 @@ const { config } = yargs
         }
     }).argv;
 
+const checkMigrations = async (api: D2Api) => {
+    axiosRetry(api.connection, { retries: 3 });
+    const migrations = getMigrationsForNode();
+    const debug = getLogger("migrations").debug;
+    const runner = await MigrationsRunner.init({ api, debug, migrations });
+    if (runner.hasPendingMigrations()) {
+        getLogger("migrations").fatal("Scheduler is unable to continue due to database migrations");
+        throw new Error("There are pending migrations to be applied to the data store");
+    }
+};
+
 const start = async (): Promise<void> => {
     const { encryptionKey, baseUrl, username, password } = config;
+
+    const authorization = `Basic ${btoa(username + ":" + password)}`;
+    const api = new D2ApiDefault({ baseUrl, auth: { username, password } });
+    const d2 = await init({ baseUrl: `${baseUrl}/api`, headers: { authorization } });
+    await checkMigrations(api);
 
     const welcomeMessage = `Script initialized on ${baseUrl} with user ${username}`;
     getLogger("main").info("-".repeat(welcomeMessage.length));
     getLogger("main").info(welcomeMessage);
-
-    // Login to the attached instance with basic auth
-    const authorization = `Basic ${btoa(username + ":" + password)}`;
-    const api = new D2ApiDefault({ baseUrl, auth: { username, password } });
-    const d2 = await init({ baseUrl: `${baseUrl}/api`, headers: { authorization } });
 
     Instance.setEncryptionKey(encryptionKey);
     new Scheduler(d2, api).initialize();

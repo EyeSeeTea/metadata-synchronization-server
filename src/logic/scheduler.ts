@@ -33,13 +33,7 @@ const config: Record<
 };
 
 export default class Scheduler {
-    private d2: D2;
-    private api: D2Api;
-
-    constructor(d2: D2, api: D2Api) {
-        this.d2 = d2;
-        this.api = api;
-    }
+    constructor(private d2: D2, private api: D2Api) {}
 
     private synchronizationTask = async (id: string): Promise<void> => {
         const rule = await SyncRule.get(this.api, id);
