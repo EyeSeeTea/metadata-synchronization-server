@@ -1,20 +1,21 @@
-import express from "express";
 import axios from "axios";
 import btoa from "btoa";
-import fs from "fs";
-import path from "path";
 import { init } from "d2";
-import { configure, getLogger } from "log4js";
-import * as yargs from "yargs";
 import "dotenv/config";
-
-import indexRouter from "./routes";
+import express from "express";
+import fs from "fs";
+import _ from "lodash";
+import { configure, getLogger } from "log4js";
+import path from "path";
+import * as yargs from "yargs";
 import Scheduler from "./logic/scheduler";
 import Instance from "./models/instance";
+import indexRouter from "./routes";
 import { D2ApiDefault } from "d2-api";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const development = process.env.NODE_ENV === "development";
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -24,18 +25,18 @@ app.use("/", indexRouter);
 app.listen(PORT);
 
 // Workaround: Hide DEBUG logs from appearing in console
-console.debug = (): void => {};
+console.debug = _.noop;
 
 configure({
     appenders: {
         out: { type: "stdout" },
         file: { type: "file", filename: "debug.log" },
     },
-    categories: { default: { appenders: ["file", "out"], level: "debug" } },
+    categories: { default: { appenders: ["file", "out"], level: development ? "all" : "debug" } },
 });
 
 // Root folder on "yarn start" is ./src, ask path to go back one level
-const rootFolder = process.env.NODE_ENV === "development" ? ".." : "";
+const rootFolder = development ? ".." : "";
 const { config } = yargs
     .options({
         config: {
