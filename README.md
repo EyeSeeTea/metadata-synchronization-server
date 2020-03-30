@@ -27,7 +27,7 @@ File `app-config.json` must be provided. If no configuration file is supplied th
 ```json
 {
     "encryptionKey": "encryptionKey",
-    "apiUrl": "https://play.dhis2.org/2.30/api",
+    "baseUrl": "https://play.dhis2.org/2.30",
     "username": "admin",
     "password": "district"
 }
