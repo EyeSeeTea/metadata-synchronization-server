@@ -65,7 +65,6 @@ const start = async (): Promise<void> => {
     const authorization = `Basic ${btoa(username + ":" + password)}`;
     const api = new D2ApiDefault({ baseUrl, auth: { username, password } });
     const d2 = await init({ baseUrl: `${baseUrl}/api`, headers: { authorization } });
-    axios.defaults.headers.common["Authorization"] = authorization;
 
     Instance.setEncryptionKey(encryptionKey);
     new Scheduler(d2, api).initialize();
