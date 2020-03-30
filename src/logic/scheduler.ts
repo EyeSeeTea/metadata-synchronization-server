@@ -7,10 +7,10 @@ import SyncRule from "../models/syncRule";
 import { D2 } from "../types/d2";
 import { SynchronizationRule, SyncRuleType } from "../types/synchronization";
 import { AggregatedSync } from "./sync/aggregated";
+import { DeletedSync } from "./sync/deleted";
 import { EventsSync } from "./sync/events";
 import { SyncronizationClass } from "./sync/generic";
 import { MetadataSync } from "./sync/metadata";
-import { DeletedSync } from "./sync/deleted";
 
 const config: Record<
     SyncRuleType,
@@ -41,20 +41,23 @@ export default class Scheduler {
         this.api = api;
     }
 
-    private synchronizationTask = async (syncRule: SyncRule): Promise<void> => {
-        const { name, type, frequency } = syncRule;
+    private synchronizationTask = async (id: string): Promise<void> => {
+        const rule = await SyncRule.get(this.api, id);
+        const { name, frequency, builder, id: syncRule, type = "metadata" } = rule;
         const { SyncClass } = config[type];
 
         const logger = getLogger(name);
         try {
-            logger.debug(`Start with frequency: ${cronstrue.toString(frequency || "")}`);
-            const sync = new SyncClass(this.d2, this.api, syncRule.toBuilder());
+            const readableFrequency = cronstrue.toString(frequency || "");
+            logger.debug(`Start ${type} rule with frequency: ${readableFrequency}`);
+            const sync = new SyncClass(this.d2, this.api, { ...builder, syncRule });
             for await (const { message, syncReport, done } of sync.execute()) {
                 if (message) logger.debug(message);
                 if (syncReport) await syncReport.save(this.api);
-                if (done && syncReport && syncReport.id)
-                    logger.debug(`Finished. Report available at ${this.buildUrl(syncReport.id)}`);
-                else if (done) logger.warn(`Finished with errors`);
+                if (done && syncReport && syncReport.id) {
+                    const reportUrl = this.buildUrl(type, syncReport.id);
+                    logger.debug(`Finished. Report available at ${reportUrl}`);
+                } else if (done) logger.warn(`Finished with errors`);
             }
         } catch (error) {
             logger.error(`Failed executing rule`, error);
@@ -65,29 +68,38 @@ export default class Scheduler {
         const { objects: rules } = await SyncRule.list(this.api, {}, { paging: false });
 
         const jobs = _.filter(rules, rule => rule.enabled);
-        const idsToCancel = _.difference(_.keys(schedule.scheduledJobs), ["__default__"]);
+        const enabledJobIds = jobs.map(({ id }) => id);
+        getLogger("scheduler").trace(`There are ${jobs.length} total jobs scheduled`);
 
         // Cancel disabled jobs that were scheduled
-        idsToCancel.forEach((id: string): boolean => schedule.scheduledJobs[id].cancel());
+        const currentJobIds = _.keys(schedule.scheduledJobs);
+        const newJobs = _.reject(jobs, ({ id }) => currentJobIds.includes(id));
+        const idsToCancel = _.difference(currentJobIds, enabledJobIds, ["__default__"]);
+        idsToCancel.forEach((id: string) => {
+            getLogger("scheduler").info(`Cancelling disabled rule with id ${id}`);
+            schedule.scheduledJobs[id].cancel();
+        });
 
         // Create or update enabled jobs
-        jobs.forEach((syncRule: SynchronizationRule): void => {
-            const { id, frequency } = syncRule;
+        newJobs.forEach((syncRule: SynchronizationRule): void => {
+            const { id, name, frequency } = syncRule;
 
             if (id && frequency) {
-                schedule.scheduleJob(
+                const job = schedule.scheduleJob(
                     id,
                     frequency,
-                    (): Promise<void> => this.synchronizationTask(SyncRule.build(syncRule))
+                    (): Promise<void> => this.synchronizationTask(id)
+                );
+                const nextDate = job.nextInvocation().toISOString();
+                getLogger("scheduler").info(
+                    `Scheduling new sync rule ${name} (${id}) at ${nextDate}`
                 );
             }
         });
     };
 
-    private buildUrl(id: string): string {
-        return `${
-            this.d2.Api.getApi().baseUrl
-        }/apps/Metadata-Synchronization/index.html#/history/${id}`;
+    private buildUrl(type: string, id: string): string {
+        return `${this.api.apiPath}/apps/MetaData-Synchronization/index.html#/history/${type}/${id}`;
     }
 
     public initialize(): void {
