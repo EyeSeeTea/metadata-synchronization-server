@@ -1,5 +1,6 @@
 import { D2Api, D2ModelSchemas } from "d2-api";
 import _ from "lodash";
+import * as complexClasses from "./complexModels";
 import * as classes from "./d2Model";
 import { D2Model, defaultModel } from "./d2Model";
 
@@ -18,12 +19,17 @@ export const metadataModels = [
     classes.OrganisationUnitLevelModel,
     classes.ValidationRuleModel,
     classes.ValidationRuleGroupModel,
+    classes.ProgramModel,
     classes.ProgramIndicatorModel,
     classes.ProgramIndicatorGroupModel,
     classes.ProgramRuleModel,
     classes.ProgramRuleVariableModel,
     classes.UserGroupModel,
 ];
+
+const findClasses = (...args: any[]) => {
+    return _.find(classes, ...args) ?? _.find(complexClasses, ...args);
+};
 
 /**
  * D2ModelProxy allows to create on-demand d2Model classes
@@ -36,11 +42,15 @@ export function d2ModelFactory(api: D2Api, d2ModelName: string): typeof D2Model 
     // TODO: Improvement, use schemas to find properties
     const { modelName = "default" } = api.models[d2ModelName as keyof D2ModelSchemas] ?? {};
 
-    const directClass = _.find(classes, ["metadataType", d2ModelName]);
-    const modelClass = _.find(classes, ["collectionName", modelName]);
-    const mappingClass = _.find(classes, ["mappingType", d2ModelName]);
+    const directClass = findClasses(["metadataType", d2ModelName]);
+    const modelClass = findClasses(["collectionName", modelName]);
+    const mappingClass = findClasses(["mappingType", d2ModelName]);
 
-    const result = directClass ?? modelClass ?? mappingClass ?? defaultModel(modelName);
-    console.debug(`d2ModelFactory for modelName ${d2ModelName} returns ${result.metadataType}`);
-    return result;
+    const result = directClass ?? modelClass ?? mappingClass;
+    if (!result) {
+        console.error(
+            `Could not find a model for ${d2ModelName}... This is probably a mistake in your app.`
+        );
+    }
+    return result ?? defaultModel(modelName);
 }

@@ -36,6 +36,7 @@ export interface DataSynchronizationParams extends DataImportParams {
     endDate?: Date;
     events?: string[];
     allEvents?: boolean;
+    generateNewUid?: boolean;
     enableAggregation?: boolean;
     aggregationType?: DataSyncAggregation;
 }
@@ -76,6 +77,7 @@ export interface SynchronizationResult {
         messages: any[];
     };
     date: Date;
+    type: SyncRuleType;
 }
 
 export type SynchronizationReportStatus = "READY" | "RUNNING" | "FAILURE" | "DONE";
@@ -87,6 +89,7 @@ export interface SynchronizationReport {
     status: SynchronizationReportStatus;
     types: string[];
     syncRule?: string;
+    deletedSyncRuleLabel?: string;
     type: SyncRuleType;
     dataStats?: AggregatedDataStats[] | EventsDataStats[];
 }
@@ -134,6 +137,8 @@ export interface SynchronizationRule {
     userGroupAccesses: SharingSetting[];
     type: SyncRuleType;
 }
+
+export type SynchronizationRuleMain = Omit<SynchronizationRule, DetailsKeys>;
 
 export type SyncRuleType = "metadata" | "aggregated" | "events" | "deleted";
 

@@ -25,9 +25,10 @@ import {
     NestedRules,
     ProgramEvent,
     SynchronizationResult,
+    SyncRuleType,
 } from "../types/synchronization";
 import "../utils/lodash-mixins";
-import { cleanModelName, getClassName } from "./d2";
+import { cleanToAPIChildReferenceName, cleanToModelName, getClassName } from "./d2";
 
 const blacklistedProperties = ["access"];
 const userProperties = ["user", "userAccesses", "userGroupAccesses"];
@@ -41,21 +42,31 @@ export function buildNestedRules(rules: string[][] = []): NestedRules {
 }
 
 export function cleanObject(
+    d2: D2,
+    modelName: string,
     element: any,
     excludeRules: string[][] = [],
     includeSharingSettings: boolean
 ): any {
-    const leafRules = _(excludeRules)
+    const leafRules: string[] = _(excludeRules)
         .filter(path => path.length === 1)
         .map(_.first)
         .compact()
         .value();
 
+    const cleanLeafRules = leafRules.reduce(
+        (accumulator: string[], rule: string) => [
+            ...accumulator,
+            ...cleanToAPIChildReferenceName(d2, rule, modelName),
+        ],
+        []
+    );
+
     const propsToRemove = includeSharingSettings ? [] : userProperties;
 
     return _.pick(
         element,
-        _.difference(_.keys(element), leafRules, blacklistedProperties, propsToRemove)
+        _.difference(_.keys(element), cleanLeafRules, blacklistedProperties, propsToRemove)
     );
 }
 
@@ -148,7 +159,7 @@ export function getAllReferences(
             result = _.deepMerge(result, recursive);
         } else if (isValidUid(value)) {
             const metadataType = _(parents)
-                .map(k => cleanModelName(d2, k, type))
+                .map(k => cleanToModelName(d2, k, type))
                 .compact()
                 .first();
             if (metadataType) {
@@ -162,7 +173,8 @@ export function getAllReferences(
 
 export function cleanMetadataImportResponse(
     importResult: MetadataImportResponse,
-    instance: Instance
+    instance: Instance,
+    type: SyncRuleType
 ): SynchronizationResult {
     const { status: importStatus, stats, message, typeReports = [] } = importResult;
     const status = importStatus === "OK" ? "SUCCESS" : importStatus;
@@ -198,12 +210,14 @@ export function cleanMetadataImportResponse(
         instance: instance.toObject(),
         report: { typeStats, messages },
         date: new Date(),
+        type,
     };
 }
 
 export function cleanDataImportResponse(
     importResult: DataImportResponse,
-    instance: Instance
+    instance: Instance,
+    type: SyncRuleType
 ): SynchronizationResult {
     const { status: importStatus, message, importCount, response, conflicts } = importResult;
     const status = importStatus === "OK" ? "SUCCESS" : importStatus;
@@ -229,6 +243,7 @@ export function cleanDataImportResponse(
         instance: instance.toObject(),
         report: { messages: aggregatedMessages ?? eventsMessages ?? [] },
         date: new Date(),
+        type,
     };
 }
 
