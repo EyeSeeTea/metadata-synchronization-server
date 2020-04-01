@@ -12,12 +12,7 @@ import { EventsSync } from "./sync/events";
 import { SyncronizationClass } from "./sync/generic";
 import { MetadataSync } from "./sync/metadata";
 
-const config: Record<
-    SyncRuleType,
-    {
-        SyncClass: SyncronizationClass;
-    }
-> = {
+const config: Record<SyncRuleType, { SyncClass: SyncronizationClass }> = {
     metadata: {
         SyncClass: MetadataSync,
     },
