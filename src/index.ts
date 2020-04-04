@@ -49,11 +49,7 @@ const { config } = yargs
         },
     })
     .coerce("config", path => {
-        if (fs.existsSync(path)) {
-            return JSON.parse(fs.readFileSync(path, "utf8"));
-        } else {
-            throw new Error("Configuration file not found");
-        }
+        return JSON.parse(fs.readFileSync(path, "utf8"));
     }).argv;
 
 const checkMigrations = async (api: D2Api) => {
@@ -68,7 +64,8 @@ const checkMigrations = async (api: D2Api) => {
 };
 
 const start = async (): Promise<void> => {
-    const { encryptionKey, baseUrl, username, password } = config;
+    const { encryptionKey = "", baseUrl, username, password } = config;
+    if (!baseUrl || !username || !password) throw new Error("Couldn't connect to server");
 
     const authorization = `Basic ${btoa(username + ":" + password)}`;
     const api = new D2ApiDefault({ baseUrl, auth: { username, password } });
