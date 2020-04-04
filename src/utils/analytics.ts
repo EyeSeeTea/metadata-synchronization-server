@@ -7,7 +7,10 @@ const timeout = (ms: number) => {
 
 export async function* executeAnalytics(instance: Instance) {
     yield i18n.t("Running analytics for instance {{name}}", instance);
-    const { response } = await instance.getApi().analytics.run().getData();
+    const { response } = await instance
+        .getApi()
+        .analytics.run()
+        .getData();
 
     let done = false;
     while (!done) {

@@ -18,6 +18,7 @@ import {
 } from "../types/d2";
 import {
     AggregatedPackage,
+    CategoryOptionAggregationBuilder,
     DataSyncAggregation,
     DataSynchronizationParams,
     DataValue,
@@ -28,6 +29,7 @@ import {
     SyncRuleType,
 } from "../types/synchronization";
 import "../utils/lodash-mixins";
+import { promiseMap } from "./common";
 import { cleanToAPIChildReferenceName, cleanToModelName, getClassName } from "./d2";
 
 const blacklistedProperties = ["access"];
@@ -74,7 +76,10 @@ export function cleanReferences(
     references: MetadataPackage,
     includeRules: string[][] = []
 ): string[] {
-    const rules = _(includeRules).map(_.first).compact().value();
+    const rules = _(includeRules)
+        .map(_.first)
+        .compact()
+        .value();
 
     return _.intersection(_.keys(references), rules);
 }
@@ -231,7 +236,9 @@ export function cleanDataImportResponse(
             ({ reference, description, conflicts }) =>
                 conflicts?.map(({ object, value }) => ({
                     uid: reference,
-                    message: _([description, object, value]).compact().join(" "),
+                    message: _([description, object, value])
+                        .compact()
+                        .join(" "),
                 })) ?? { uid: reference, message: description }
         )
     );
@@ -275,7 +282,10 @@ function buildPeriodFromParams(params: DataSynchronizationParams): [Moment, Mome
     const {
         period,
         startDate = "1970-01-01",
-        endDate = moment().add(1, "years").endOf("year").format("YYYY-MM-DD"),
+        endDate = moment()
+            .add(1, "years")
+            .endOf("year")
+            .format("YYYY-MM-DD"),
     } = params;
 
     if (!period || period === "ALL" || period === "FIXED") {
@@ -308,10 +318,11 @@ const aggregations = {
 };
 
 const buildPeriodsForAggregation = (
-    aggregationType: DataSyncAggregation,
+    aggregationType: DataSyncAggregation | undefined,
     startDate: Moment,
     endDate: Moment
 ): string[] => {
+    if (!aggregationType) return [];
     const { format, unit, amount } = aggregations[aggregationType];
 
     const current = startDate.clone();
@@ -357,61 +368,55 @@ export async function getAggregatedData(
         .getData();
 }
 
-export async function getAnalyticsData(
-    api: D2Api,
-    params: DataSynchronizationParams,
-    dataElements: string[],
-    indicators: string[]
-): Promise<AggregatedPackage> {
+export async function getAnalyticsData({
+    api,
+    dataParams,
+    dimensionIds,
+    filter,
+    includeCategories,
+}: {
+    api: D2Api;
+    dataParams: DataSynchronizationParams;
+    dimensionIds: string[];
+    filter?: string[];
+    includeCategories: boolean;
+}): Promise<AggregatedPackage> {
     const {
         orgUnitPaths = [],
         allAttributeCategoryOptions,
         attributeCategoryOptions,
         aggregationType,
-    } = params;
-    const [startDate, endDate] = buildPeriodFromParams(params);
-
+    } = dataParams;
+    const [startDate, endDate] = buildPeriodFromParams(dataParams);
+    const periods = buildPeriodsForAggregation(aggregationType, startDate, endDate);
     const orgUnit = cleanOrgUnitPaths(orgUnitPaths);
     const attributeOptionCombo = !allAttributeCategoryOptions
         ? attributeCategoryOptions
         : undefined;
 
-    if (aggregationType) {
-        const periods = buildPeriodsForAggregation(aggregationType, startDate, endDate);
-
-        const promises = _.chunk(periods, 500).reduce((acc, period) => {
-            acc.push(
-                ...[
-                    { dimension: dataElements, includeCategories: true },
-                    { dimension: indicators, includeCategories: false },
-                ].map(({ dimension, includeCategories }) => {
-                    return dimension.length > 0
-                        ? api
-                              .get<AggregatedPackage>("/analytics/dataValueSet.json", {
-                                  dimension: _.compact([
-                                      `dx:${dimension.join(";")}`,
-                                      `pe:${period.join(";")}`,
-                                      `ou:${orgUnit.join(";")}`,
-                                      includeCategories ? `co` : undefined,
-                                      attributeOptionCombo
-                                          ? `ao:${attributeOptionCombo.join(";")}`
-                                          : "",
-                                  ]),
-                              })
-                              .getData()
-                        : Promise.resolve({ dataValues: [] });
+    if (dimensionIds.length === 0 || orgUnit.length === 0) {
+        return { dataValues: [] };
+    } else if (aggregationType) {
+        const result = await promiseMap(_.chunk(periods, 500), period => {
+            return api
+                .get<AggregatedPackage>("/analytics/dataValueSet.json", {
+                    dimension: _.compact([
+                        `dx:${dimensionIds.join(";")}`,
+                        `pe:${period.join(";")}`,
+                        `ou:${orgUnit.join(";")}`,
+                        includeCategories ? `co` : undefined,
+                        attributeOptionCombo ? `ao:${attributeOptionCombo.join(";")}` : undefined,
+                    ]),
+                    filter,
                 })
-            );
+                .getData();
+        });
 
-            return acc;
-        }, [] as Promise<AggregatedPackage>[]);
-
-        const result = await Promise.all(promises);
-        const dataValues = result.reduce((acc, current) => {
-            const { dataValues = [] } = current;
-            acc.push(...dataValues);
-            return acc;
-        }, [] as DataValue[]);
+        const dataValues = _(result)
+            .map(({ dataValues }) => dataValues)
+            .flatten()
+            .compact()
+            .value();
 
         return { dataValues };
     } else {
@@ -420,7 +425,7 @@ export async function getAnalyticsData(
 }
 
 export const getDefaultIds = memoize(
-    async (api: D2Api) => {
+    async (api: D2Api, filter?: string) => {
         const response = (await api
             .get("/metadata", {
                 filter: "code:eq:default",
@@ -430,7 +435,9 @@ export const getDefaultIds = memoize(
             [key: string]: { id: string }[];
         };
 
-        return _(response)
+        const metadata = _.pickBy(response, (_value, type) => !filter || type === filter);
+
+        return _(metadata)
             .omit(["system"])
             .values()
             .flatten()
@@ -459,6 +466,73 @@ export const getCategoryOptionCombos = memoize(
     { serializer: (api: D2Api) => api.baseUrl }
 );
 
+export const getAllDimensions = memoize(
+    async (api: D2Api) => {
+        const { dimensions } = await api
+            .get<{ dimensions: Array<{ id: string }> }>("/dimensions", {
+                paging: false,
+                fields: "id",
+            })
+            .getData();
+
+        return dimensions.map(({ id }) => id);
+    },
+    { serializer: (api: D2Api) => api.baseUrl }
+);
+
+/**
+ * Given all the aggregatedDataElements compile a list of dataElements
+ * that have aggregation for their category options
+ * @param MetadataMappingDictionary
+ */
+export const getAggregatedOptions = async (
+    api: D2Api,
+    { aggregatedDataElements }: MetadataMappingDictionary,
+    categoryOptionCombos: Partial<D2CategoryOptionCombo>[]
+): Promise<CategoryOptionAggregationBuilder[]> => {
+    const dimensions = await getAllDimensions(api);
+    const findOptionCombo = (mappedOption: string, mappedCombo?: string) =>
+        categoryOptionCombos.find(
+            ({ categoryCombo, categoryOptions }) =>
+                categoryCombo?.id === mappedCombo &&
+                categoryOptions?.map(({ id }) => id).includes(mappedOption)
+        )?.id ?? mappedOption;
+
+    const validOptions = _.transform(
+        aggregatedDataElements,
+        (result, { mapping = {} }, dataElement) => {
+            const { categoryOptions, categoryCombos } = mapping;
+
+            const builders = _(categoryOptions)
+                .mapValues(({ mappedId = "DISABLED" }, categoryOption) => ({
+                    categoryOption,
+                    mappedId,
+                }))
+                .values()
+                .groupBy(({ mappedId }) => mappedId)
+                .pickBy((values, mappedId) => values.length > 1 && mappedId !== "DISABLED")
+                .mapValues((values = [], mappedCategoryOption) => ({
+                    dataElement,
+                    categoryOptions: values.map(({ categoryOption }) => categoryOption),
+                    mappedOptionCombo: findOptionCombo(
+                        mappedCategoryOption,
+                        _.values(categoryCombos)[0]?.mappedId
+                    ),
+                }))
+                .values()
+                .value();
+            result.push(...builders);
+        },
+        [] as Omit<CategoryOptionAggregationBuilder, "category">[]
+    );
+
+    const result = _.flatten(
+        dimensions.map(category => validOptions.map(item => ({ ...item, category })))
+    );
+
+    return result;
+};
+
 export const getRootOrgUnit = memoize(
     (api: D2Api) => {
         return api.models.organisationUnits.get({
@@ -476,7 +550,11 @@ export function cleanObjectDefault(object: ProgramEvent | DataValue, defaults: s
 }
 
 export function cleanOrgUnitPath(orgUnitPath?: string): string {
-    return _(orgUnitPath).split("/").last() ?? "";
+    return (
+        _(orgUnitPath)
+            .split("/")
+            .last() ?? ""
+    );
 }
 
 export function cleanOrgUnitPaths(orgUnitPaths: string[]): string[] {
@@ -669,7 +747,9 @@ export const mapOptionValue = (
 ): string => {
     for (const mapping of mappings) {
         const { options } = mapping;
-        const candidate = _(options).values().find(["code", value]);
+        const candidate = _(options)
+            .values()
+            .find(["code", value]);
 
         if (candidate?.mappedCode) return candidate?.mappedCode;
     }

@@ -1,13 +1,14 @@
 import i18n from "@dhis2/d2-i18n";
-import { D2ModelSchemas } from "d2-api";
 import { ObjectsTableDetailField, TableColumn } from "d2-ui-components";
 import _ from "lodash";
+import { D2Model } from "../models/dhis/default";
 import { D2 } from "../types/d2";
 import "../utils/lodash-mixins";
 
 const include = true as true;
 
 export interface MetadataType {
+    model: typeof D2Model;
     id: string;
     name: string;
     displayName: string;
@@ -27,14 +28,7 @@ export interface MetadataType {
         id: string;
     };
     programType?: "WITHOUT_REGISTRATION" | "WITH_REGISTRATION";
-    __mappingType__:
-        | keyof D2ModelSchemas
-        | "aggregatedDataElements"
-        | "programDataElements"
-        | "eventPrograms"
-        | "trackerPrograms";
-    __type__: keyof D2ModelSchemas;
-    [key: string]: string | number | object | undefined;
+    [key: string]: unknown;
 }
 
 export const d2BaseModelColumns: TableColumn<MetadataType>[] = [
@@ -137,6 +131,22 @@ export const organisationUnitFields = {
     path: include,
 };
 
+export const categoryOptionFields = {
+    ...d2BaseModelFields,
+    categories: {
+        id: include,
+        displayName: include,
+    },
+};
+
+export const optionFields = {
+    ...d2BaseModelFields,
+    optionSet: {
+        id: include,
+        displayName: include,
+    },
+};
+
 export function isD2Model(d2: D2, modelName: string): boolean {
     return !!d2.models[modelName];
 }
@@ -190,7 +200,9 @@ export function cleanToAPIChildReferenceName(d2: D2, key: string, parent: string
 }
 
 export function getClassName(className: string): string | undefined {
-    return _(className).split(".").last();
+    return _(className)
+        .split(".")
+        .last();
 }
 
 export async function getCurrentUserOrganisationUnits(d2: D2): Promise<string[]> {

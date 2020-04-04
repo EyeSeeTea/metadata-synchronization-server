@@ -7,7 +7,8 @@ import {
     saveDataStore,
 } from "../models/dataStore";
 import { Config, Debug, Migration, RunnerOptions } from "../types/migrations";
-import { getMigrationsForWebpack, promiseMap } from "./utils";
+import { promiseMap } from "../utils/common";
+import { getMigrationsForWebpack } from "./utils";
 
 export class MigrationsRunner {
     public migrations: Migration[];
@@ -119,7 +120,10 @@ export class MigrationsRunner {
     }
 
     async getDataStoreKeys(): Promise<string[]> {
-        return this.api.dataStore(dataStoreNamespace).getKeys().getData();
+        return this.api
+            .dataStore(dataStoreNamespace)
+            .getKeys()
+            .getData();
     }
 
     async getBackupKeys() {
